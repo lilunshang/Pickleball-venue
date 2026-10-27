@@ -362,6 +362,7 @@
           <div><b>${sum.walkinPending + (s.started ? sum.waitlist : 0)}</b><span>待處理</span></div>
           <div><b>${money(sum.systemTotal)}</b><span>我收的款</span></div>
         </div>
+        ${s.racket && s.racket.on ? `<div class="rkbar">🏓 本場需要球拍 <b>${sum.rackets || 0}</b> 支${s.racket.left === null ? '' : '　還可租 ' + s.racket.left + ' 支'}${s.racket.used > (sum.rackets || 0) ? '<span class="muted">（同時段其他場另借 ' + (s.racket.used - (sum.rackets || 0)) + ' 支）</span>' : ''}</div>` : ''}
         ${arrived
           ? `<div class="arrived">✓ ${esc(r.shift.arrive)}　${esc(r.shift.arriveTime)}</div>`
           : s.editable ? '<button class="btn block" id="btnArrive">我已到場</button><p class="muted" style="text-align:center;margin:6px 0 0">開始前 30 分鐘起、在場地附近才能簽到</p>' : ''}
@@ -457,6 +458,7 @@
       p.source === '現場' && !pending ? '<span class="tag">現場</span>' : '',
       p.dupr ? `<span class="tag">DUPR ${esc(p.dupr)}</span>` : '',
       p.payer ? `<span class="tag green">付款人 ${esc(p.payer)}</span>` : '', // v2.5
+      p.rackets ? `<span class="tag orange">🏓 ${p.rackets}</span>` : '', // v2.7：租球拍支數
     ].join('');
     let pay = '';
     if (p.hasAr) {
@@ -816,6 +818,9 @@
               : '<button class="btn ghost block" id="mLeave">標記離場</button>')
             : '<p class="muted">尚未簽到。</p>'}
         ${present && !p.left ? '<button class="btn ghost block" id="mUndoCheck">取消簽到（簽錯人時）</button>' : ''}
+        ${r.session.racket && r.session.racket.on && p.status === '已報名' ? `<div class="group-title">球拍租借</div>
+          <p class="muted">${p.rackets ? '已租 ' + p.rackets + ' 支。' : ''}每支 ${money(r.session.racket.fee)}${r.session.racket.left === null ? '' : '，還可租 ' + r.session.racket.left + ' 支'}</p>
+          ${r.session.racket.left === 0 ? '' : '<button class="btn block amber" id="mRent">現場租球拍</button>'}` : ''}
         <div class="actions"><button class="btn ghost" id="mCancel">關閉</button></div>
       </div>`;
     modal.hidden = false;
@@ -825,6 +830,7 @@
     on('mLeaveRe', () => rosterAct('leave', { regId: p.regId, reschedule: true }));
     on('mLeave', () => rosterAct('leave', { regId: p.regId }));
     on('mUndoCheck', () => rosterAct('checkin', { regId: p.regId, attend: '未簽到' }, '已取消簽到'));
+    on('mRent', () => openRent(p));
     modal.querySelectorAll('[data-move]').forEach((b) => b.addEventListener('click', () =>
       rosterAct('moveCourt', { regId: p.regId, courtId: b.dataset.move }, '已換到 ' + b.textContent)));
   }
@@ -921,6 +927,37 @@
     }, '已記錄收款'));
   }
 
+  /** v2.7：現場租球拍 — 選支數＋付款方式，送出＝新增應收（球拍租借）＋收款（待確認） */
+  function openRent(p) {
+    const rk = state.roster.session.racket;
+    const methods = state.roster.payMethods;
+    const max = Math.min(4, rk.left === null ? 4 : rk.left);
+    if (max < 1) { toast('球拍已經租完了', 'error'); return; }
+    modal.innerHTML = `
+      <div class="sheet">
+        <h2>現場租球拍：${esc(p.name)}</h2>
+        <p class="muted">每支 ${money(rk.fee)}，不收押金${rk.left === null ? '' : '；還可租 ' + rk.left + ' 支'}。${p.rackets ? '線上已租 ' + p.rackets + ' 支。' : ''}</p>
+        <label>支數<select id="rN">${Array.from({ length: max }, (_, i) => `<option value="${i + 1}">${i + 1} 支</option>`).join('')}</select></label>
+        <p>應收 <b id="rSum">${money(rk.fee)}</b></p>
+        <label>付款方式<select id="rMethod">${methods.map((m) => `<option>${esc(m)}</option>`).join('')}</select></label>
+        <label id="rLast5Wrap" hidden>帳號末五碼<input id="rLast5" inputmode="numeric" maxlength="5"></label>
+        <p class="muted">送出後記一筆收款（待確認），由營運對帳。</p>
+        <div class="actions">
+          <button class="btn ghost" id="rCancel">取消</button>
+          <button class="btn" id="rOk">確認租出並收款</button>
+        </div>
+      </div>`;
+    modal.hidden = false;
+    const nEl = document.getElementById('rN');
+    const method = document.getElementById('rMethod');
+    nEl.addEventListener('change', () => { document.getElementById('rSum').textContent = money(Number(nEl.value) * rk.fee); });
+    method.addEventListener('change', () => { document.getElementById('rLast5Wrap').hidden = method.value !== '轉帳'; });
+    document.getElementById('rCancel').addEventListener('click', closeModal);
+    document.getElementById('rOk').addEventListener('click', () => rosterAct('rentRacket', {
+      regId: p.regId, n: Number(nEl.value), method: method.value, last5: document.getElementById('rLast5').value,
+    }));
+  }
+
   function closeModal() {
     modal.hidden = true;
     modal.innerHTML = '';
@@ -995,11 +1032,13 @@
       </div>
       <form id="fReport" class="card form">
         <div class="cashbox">
-          <div>系統記錄：我收的現金 <b>${money(sum.systemCash)}</b></div>
+          <div>應交現金 <b>${money(sum.systemCash)}</b></div>
+          <div class="muted">＝本場我收的現金：現場報名 ${money(sum.systemCash - (sum.racketCash || 0))}${s.racket && s.racket.on ? '＋現場租拍 ' + money(sum.racketCash || 0) : ''}</div>
           <div class="muted">全部收款（含轉帳等）${money(sum.systemTotal)}</div>
         </div>
-        <label>實際交接現金<input name="cash" type="number" inputmode="numeric" min="0" value="${esc(sh.cash)}" placeholder="${sum.systemCash}"></label>
+        <label>實際交接金額<input name="cash" type="number" inputmode="numeric" min="0" value="${esc(sh.cash === '' ? sum.systemCash : sh.cash)}"></label>
         <div id="cashDiff" class="muted"></div>
+        <label id="cashReasonWrap" hidden>差額原因<textarea name="cashReason" rows="2" placeholder="例如找零、少收、學員改轉帳">${esc(sh.cashReason || '')}</textarea></label>
         ${r.fields.newcomers ? `<label>新人接待人數<input name="newcomers" type="number" inputmode="numeric" min="0" value="${esc(sh.newcomers === '' ? sum.newcomers : sh.newcomers)}"></label>` : ''}
         <label>球具狀況
           <select name="equip">
@@ -1017,10 +1056,11 @@
     const diff = document.getElementById('cashDiff');
     const showDiff = () => {
       const v = form.cash.value;
-      if (v === '') { diff.textContent = ''; return; }
+      if (v === '') { diff.textContent = ''; document.getElementById('cashReasonWrap').hidden = true; return; }
       const d = Number(v) - sum.systemCash;
-      diff.textContent = d === 0 ? '✓ 與系統相符' : '與系統差 ' + (d > 0 ? '+' : '') + d + ' 元，請在現場問題說明原因';
+      diff.textContent = d === 0 ? '✓ 與應交現金相符' : '與應交現金差 ' + (d > 0 ? '+' : '') + d + ' 元，請填寫差額原因';
       diff.className = d === 0 ? 'ok-text' : 'warn-text';
+      document.getElementById('cashReasonWrap').hidden = d === 0;
     };
     form.cash.addEventListener('input', showDiff);
     showDiff();
@@ -1030,6 +1070,7 @@
       const res = await act(() => api('report', {
         shiftId: state.shiftId,
         cash: form.cash.value,
+        cashReason: form.cashReason.value,
         newcomers: form.newcomers ? form.newcomers.value : '',
         equip: form.equip.value,
         venueIssue: form.venueIssue.value,

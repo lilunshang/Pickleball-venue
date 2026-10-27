@@ -220,3 +220,6 @@ body.stale #app .btn, body.stale #app [data-act] { opacity: .55; pointer-events:
 .sk-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 14px; margin-bottom: 10px; }
 .sk-card i { display: block; height: 12px; border-radius: 6px; margin: 8px 0; background: linear-gradient(90deg, #eceeed 25%, #f6f7f6 50%, #eceeed 75%); background-size: 200% 100%; animation: sk 1.2s infinite linear; }
 @keyframes sk { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+/* v2.7：球拍租借 */
+.head .rkbar { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--orange-soft); color: var(--orange); font-size: 14px; }
+.head .rkbar .muted { display: block; font-size: 12px; }
