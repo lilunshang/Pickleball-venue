@@ -354,7 +354,7 @@
 
     app.innerHTML = `
       <div class="card head">
-        <div class="title">${esc(s.name)} <span class="tag ${s.type === '不限' ? '' : 'blue'}">${esc(s.type)}</span></div>
+        <div class="title">${esc(s.name)} <span class="tag ${(s.typeRule || s.type) === '不限' ? '' : 'blue'}">${esc(s.type)}</span></div>
         <div class="muted">${esc(s.date)}　${esc(s.start)}–${esc(s.end)}　${esc(s.venue)}</div>
         <div class="stats">
           <div><b>${sum.present}</b><span>在場</span></div>
