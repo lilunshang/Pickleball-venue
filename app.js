@@ -1,4 +1,4 @@
-/**
+﻿/**
  * venue/app.js — 場主 LIFF 頁面　v2.5（2026/10/21：顯示付款人、同一付款人一起收款）；v2.4（比分在逾時／系統忙碌時保留重送）
  * v2.3（2026/10/19：開頁更快；含 v2.2 讀取優化、v2.1 我已到場定位）
  * v2.3：LINE 登入（liff.init）完成前就先顯示上次的畫面；切回 LINE 時立刻更新；排班頁預先載入今天的名單
@@ -358,7 +358,7 @@
         <div class="muted">${esc(s.date)}　${esc(s.start)}–${esc(s.end)}　${esc(s.venue)}</div>
         <div class="stats">
           <div><b>${sum.present}</b><span>在場</span></div>
-          <div><b>${sum.registered}</b><span>報名／上限 ${s.capacity || '—'}</span></div>
+          <div><b>${sum.registered}</b><span>報名／學員名額 ${s.capacity || '—'}${s.hostSeat ? '（＋場主 1）' : ''}</span></div>
           <div><b>${sum.walkinPending + (s.started ? sum.waitlist : 0)}</b><span>待處理</span></div>
           <div><b>${money(sum.systemTotal)}</b><span>我收的款</span></div>
         </div>
