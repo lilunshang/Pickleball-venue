@@ -1,5 +1,5 @@
 ﻿/**
- * venue/app.js — 場主 LIFF 頁面　v2.5（2026/10/21：顯示付款人、同一付款人一起收款）；v2.4（比分在逾時／系統忙碌時保留重送）
+ * venue/app.js — 場主 LIFF 頁面　v3.1（2026/11/1：我的排班改成整個月的月曆，可依地區、據點篩選；cal.js）；v2.5（2026/10/21：顯示付款人、同一付款人一起收款）；v2.4（比分在逾時／系統忙碌時保留重送）
  * v2.3（2026/10/19：開頁更快；含 v2.2 讀取優化、v2.1 我已到場定位）
  * v2.3：LINE 登入（liff.init）完成前就先顯示上次的畫面；切回 LINE 時立刻更新；排班頁預先載入今天的名單
  * v2.2：開頁一次 init、先顯示上次的資料再更新、30 秒輪詢只比對簽章、比分與簽到先更新畫面
@@ -28,6 +28,7 @@
     me: null, page: 'shifts', tab: 'roll', shiftId: '', roster: null, court: '',
     pollTimer: null, flushTimer: null, busy: false, flushing: false,
     shifts: null, stale: false, pollCount: 0,
+    shiftMonth: '', monthShifts: {}, cal: { region: '', venue: '', day: '' }, // v3.1：月曆
   };
   const app = document.getElementById('app');
   const modal = document.getElementById('modal');
@@ -245,6 +246,10 @@
   /* ---------- 我的排班 ---------- */
 
   async function renderShifts() {
+    // v3.1：本月用開頁一起帶回的排班；其他月份另外讀
+    const cur = MonthCal.thisMonth();
+    if (!state.shiftMonth) state.shiftMonth = cur;
+    if (state.shiftMonth !== cur) return renderOtherMonth(state.shiftMonth);
     let list = state.shifts;
     if (!list || state.shiftsStale) {
       if (list) drawShifts(list); else loading();
@@ -265,15 +270,42 @@
     return out;
   }
 
-  function drawShifts(list) {
-    if (!list.length) return renderNotice('目前沒有排班', '排班由營運安排，有新的排班時會在前一晚提醒你。');
+  /** v3.1：其他月份（手機上記住讀過的月份，先畫再更新） */
+  async function renderOtherMonth(month) {
+    const have = state.monthShifts[month];
+    if (have) drawShifts(have, month); else loading();
+    try {
+      const list = await api('myShifts', { month: month });
+      state.monthShifts[month] = list;
+      if (state.page === 'shifts' && state.shiftMonth === month) drawShifts(list, month);
+    } catch (e) {
+      if (!have) return showFatal(e);
+      toast(e.message, 'error');
+    }
+    return null;
+  }
 
-    app.innerHTML = '<h1>我的排班</h1>' + list.map((s) => `
-      <div class="card shift ${s.isToday ? 'today' : ''} ${s.sessionStatus === '取消' ? 'cancelled' : ''}">
+  /** v3.1：整個月的月曆（地區 → 據點 → 月曆），下面依日期列出排班 */
+  function drawShifts(list, month) {
+    month = month || state.shiftMonth || MonthCal.thisMonth();
+    const items = list.filter((s) => String(s.date).slice(0, 7) === month);
+    app.innerHTML = '<h1>我的排班</h1><div id="calBox"></div>';
+    MonthCal.render(document.getElementById('calBox'), {
+      month: month, today: todayStr(), items: items, state: state.cal, unit: '場',
+      emptyText: '這個月沒有你的排班。排班由營運安排，有新的排班時會在前一晚提醒你。',
+      onMonth: (m) => { state.shiftMonth = m; state.cal.day = ''; renderShifts(); window.scrollTo(0, 0); },
+      itemNode: shiftNode,
+    });
+  }
+
+  function shiftNode(s) {
+    const div = document.createElement('div');
+    div.className = 'card shift' + (s.isToday ? ' today' : '') + (s.sessionStatus === '取消' ? ' cancelled' : '');
+    div.innerHTML = `
         <div class="row">
           <div>
-            <div class="date">${esc(s.date)}${s.isToday ? '<span class="tag green">今天</span>' : ''}</div>
-            <div class="title">${esc(s.start)}–${esc(s.end)}　${esc(s.venue)}</div>
+            <div class="slot">${esc(s.start)}–${esc(s.end)}${s.isToday ? '<span class="tag green">今天</span>' : ''}</div>
+            <div class="title">${esc(s.venue)}</div>
             <div class="muted">${esc(s.sessionName)}${s.sessionStatus === '取消' ? '（已取消）' : ''}</div>
           </div>
           <span class="tag">${esc(s.arrive)}</span>
@@ -282,11 +314,9 @@
         <div class="actions">
           <button class="btn" data-go="checkin" data-shift="${esc(s.shiftId)}">今日球敘</button>
           <button class="btn ghost" data-go="report" data-shift="${esc(s.shiftId)}">收班回報</button>
-        </div>` : ''}
-      </div>`).join('');
-
-    app.querySelectorAll('[data-go]').forEach((b) =>
-      b.addEventListener('click', () => go(b.dataset.go, b.dataset.shift)));
+        </div>` : ''}`;
+    div.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => go(b.dataset.go, b.dataset.shift)));
+    return div;
   }
 
   /** 沒有指定排班時：今天只有一場就直接用，多場就讓人選 */

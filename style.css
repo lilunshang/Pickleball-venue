@@ -12,6 +12,10 @@
   --blue-soft: #e7eef8;
   --red: #b3261e;
   --amber: #a86b00;
+  /* v3.1：月曆（cal.js）用的顏色 */
+  --green: var(--brand);
+  --green-light: var(--brand-soft);
+  --green-dark: #16463a;
 }
 
 * { box-sizing: border-box; }
@@ -223,3 +227,38 @@ body.stale #app .btn, body.stale #app [data-act] { opacity: .55; pointer-events:
 /* v2.7：球拍租借 */
 .head .rkbar { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--orange-soft); color: var(--orange); font-size: 14px; }
 .head .rkbar .muted { display: block; font-size: 12px; }
+
+/* v3.1：我的排班月曆 */
+/* MonthCal（月曆）v1 */
+.mc-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 0 10px; }
+.mc-title { text-align: center; }
+.mc-title b { display: block; font-size: 18px; color: var(--green-dark, #16463a); }
+.mc-title span { font-size: 12px; color: var(--muted, #6b7a74); }
+.mc-nav { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line, #c9d6d0); background: #fff; color: var(--green-dark, #16463a); font-size: 22px; line-height: 1; font-family: inherit; }
+.mc-link { display: block; margin: 0 auto 10px; border: 0; background: none; color: var(--green, #1f5f4a); font-weight: 700; font-size: 13px; font-family: inherit; text-decoration: underline; }
+.mc-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+.mc-lab { font-size: 12px; color: var(--muted, #6b7a74); font-weight: 600; min-width: 2.4em; }
+.mc-chip { border: 1px solid var(--line, #c9d6d0); background: #fff; border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 600; color: #333; font-family: inherit; }
+.mc-chip.on { background: var(--green, #1f5f4a); border-color: var(--green, #1f5f4a); color: #fff; }
+.mc-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; background: #fff; border: 1px solid var(--line, #c9d6d0); border-radius: 12px; padding: 8px; margin: 6px 0 14px; }
+.mc-wd { text-align: center; font-size: 11px; color: var(--muted, #6b7a74); font-weight: 600; padding-bottom: 2px; }
+.mc-wd.we { color: #b4572e; }
+.mc-d { position: relative; aspect-ratio: 1 / 1; min-height: 38px; border: 0; border-radius: 8px; background: none; padding: 0; font-family: inherit; color: #9aa6a1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
+.mc-d.blank { visibility: hidden; }
+.mc-d .n { font-size: 14px; font-weight: 600; line-height: 1.1; }
+.mc-d.has { background: var(--green-light, #e6f0eb); color: var(--green-dark, #16463a); }
+.mc-d.has.past { opacity: .6; }
+.mc-d .c { font-size: 10px; font-weight: 800; min-width: 16px; padding: 0 4px; border-radius: 999px; background: var(--green, #1f5f4a); color: #fff; line-height: 15px; }
+.mc-d.today { box-shadow: inset 0 0 0 2px #b4572e; }
+.mc-d.sel { background: var(--green, #1f5f4a); color: #fff; }
+.mc-d.sel .c { background: #fff; color: var(--green-dark, #16463a); }
+.mc-day { font-size: 14px; font-weight: 800; color: var(--green-dark, #16463a); margin: 14px 2px 8px; display: flex; align-items: center; gap: 6px; }
+.mc-day.today { color: #b4572e; }
+.mc-tag { font-size: 11px; font-weight: 700; background: #fff4ea; color: #b4572e; border-radius: 999px; padding: 1px 8px; }
+.mc-empty { text-align: center; color: var(--muted, #6b7a74); font-size: 14px; padding: 20px 8px; background: #fff; border: 1px dashed var(--line, #c9d6d0); border-radius: 12px; }
+.mc-sec { display: flex; align-items: center; gap: 8px; width: 100%; margin: 16px 0 4px; padding: 10px 12px; border: 1px solid var(--line, #c9d6d0); border-radius: 10px; background: #fff; font-family: inherit; font-size: 14px; font-weight: 800; color: var(--green-dark, #16463a); text-align: left; }
+.mc-sec .car { width: 14px; color: var(--green, #1f5f4a); }
+.mc-sec .cnt { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--muted, #6b7a74); }
+.mc-sec.done { color: var(--muted, #6b7a74); background: transparent; }
+.mc-sec + .mc-day { margin-top: 10px; }
+.shift .slot { font-weight: 700; color: var(--green-dark); }
