@@ -314,9 +314,38 @@
         <div class="actions">
           <button class="btn" data-go="checkin" data-shift="${esc(s.shiftId)}">今日球敘</button>
           <button class="btn ghost" data-go="report" data-shift="${esc(s.shiftId)}">收班回報</button>
-        </div>` : ''}`;
+        </div>` : ''}
+        ${seatBlock(s)}`;
     div.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => go(b.dataset.go, b.dataset.shift)));
+    const rel = div.querySelector('[data-release]');
+    if (rel) rel.addEventListener('click', () => releaseSeat(s));
     return div;
+  }
+
+  /** v3.3（11/3）：讓出名額 — 可讓出顯示按鈕；已讓出顯示時間；其他情況不顯示 */
+  function seatBlock(s) {
+    const seat = s.seat || {};
+    if (seat.state === 'released') return `<div class="seatbar done">✓ 已讓出名額（${esc(seat.at)}）・這場學員名額＋1</div>`;
+    if (seat.state !== 'can') return '';
+    return `<div class="seatbar">
+        <div>這場你佔 1 個學員名額（免費下場打球）。不打的話可以讓給學員。</div>
+        <button class="btn ghost sm" data-release="1">讓出我的名額</button>
+        <div class="muted">${esc(seat.until)} 前可讓出（開打前 24 小時）</div>
+      </div>`;
+  }
+
+  async function releaseSeat(s) {
+    const msg = '讓出你在這場的名額？\n\n' + s.date + ' ' + s.start + '　' + s.venue + '\n'
+      + '・學員名額多 1 位，有候補會自動遞補\n'
+      + '・同時段你負責的其他場也一樣不佔位\n\n'
+      + '⚠ 送出後不能改回。';
+    if (!confirm(msg)) return;
+    const month = state.shiftMonth && state.shiftMonth !== MonthCal.thisMonth() ? state.shiftMonth : '';
+    const res = await act(() => api('releaseSeat', { shiftId: s.shiftId, month: month }));
+    if (!res) return;
+    if (month) state.monthShifts[month] = res.shifts;
+    else { state.shifts = res.shifts; saveSnap(); }
+    drawShifts(res.shifts, month || undefined);
   }
 
   /** 沒有指定排班時：今天只有一場就直接用，多場就讓人選 */

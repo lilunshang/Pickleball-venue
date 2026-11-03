@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --brand: #1f5c45;
   --brand-soft: #e8f1ec;
   --text: #1d2420;
@@ -262,3 +262,9 @@ body.stale #app .btn, body.stale #app [data-act] { opacity: .55; pointer-events:
 .mc-sec.done { color: var(--muted, #6b7a74); background: transparent; }
 .mc-sec + .mc-day { margin-top: 10px; }
 .shift .slot { font-weight: 700; color: var(--green-dark); }
+
+/* v3.3：讓出名額 */
+.seatbar { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--orange-soft); color: var(--text, inherit); font-size: 14px; display: grid; gap: 6px; }
+.seatbar .btn { justify-self: start; }
+.seatbar .muted { font-size: 13px; }
+.seatbar.done { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
