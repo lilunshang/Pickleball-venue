@@ -1,5 +1,5 @@
 ﻿/**
- * venue/app.js — 場主 LIFF 頁面　v3.1（2026/11/1：我的排班改成整個月的月曆，可依地區、據點篩選；cal.js）；v2.5（2026/10/21：顯示付款人、同一付款人一起收款）；v2.4（比分在逾時／系統忙碌時保留重送）
+ * venue/app.js — 場主 LIFF 頁面　v3.5（2026/11/8：我的資料加「匯款帳戶」，可自己登錄／修改；?page=profile&sec=bank 直接打開）；v3.1（2026/11/1：我的排班改成整個月的月曆，可依地區、據點篩選；cal.js）；v2.5（2026/10/21：顯示付款人、同一付款人一起收款）；v2.4（比分在逾時／系統忙碌時保留重送）
  * v2.3（2026/10/19：開頁更快；含 v2.2 讀取優化、v2.1 我已到場定位）
  * v2.3：LINE 登入（liff.init）完成前就先顯示上次的畫面；切回 LINE 時立刻更新；排班頁預先載入今天的名單
  * v2.2：開頁一次 init、先顯示上次的資料再更新、30 秒輪詢只比對簽章、比分與簽到先更新畫面
@@ -43,6 +43,7 @@
       const p = LiffKit.params();
       state.page = PAGES.indexOf(p.get('page')) >= 0 ? p.get('page') : 'shifts';
       state.shiftId = p.get('shift') || '';
+      state.wantBank = p.get('sec') === 'bank'; // v3.5
       if (TABS.some((t) => t[0] === p.get('tab'))) state.tab = p.get('tab');
       window.addEventListener('online', flushScores);
       state.flushTimer = setInterval(flushScores, FLUSH_MS);
@@ -1165,6 +1166,76 @@
         const res = await act(() => api('updateProfile', data), '已儲存');
         if (res) { state.me = res; saveSnap(); }
       }
+    });
+    if (!isRegister) {
+      app.insertAdjacentHTML('beforeend', '<div class="card" id="bankCard"><h2>匯款帳戶</h2>' +
+        '<p class="muted">場主費、教練費會匯到這個帳戶。同時是場主和教練的人只要填一次，兩邊共用。</p>' +
+        '<div id="bankBox"><button class="btn ghost block" type="button" id="bankOpen">查看／修改匯款帳戶</button></div></div>');
+      document.getElementById('bankOpen').addEventListener('click', openBank);
+      if (state.wantBank && !state.stale) { state.wantBank = false; openBank(); }
+    }
+  }
+
+  /* ---------- v3.5 匯款帳戶（1_人員_請款資料；打開才讀，不存在手機裡） ---------- */
+
+  // 常用銀行（代碼＋名稱）；清單沒有的可以直接打字
+  const BANKS = ['004 臺灣銀行', '005 土地銀行', '006 合作金庫', '007 第一銀行', '008 華南銀行', '009 彰化銀行',
+    '011 上海商銀', '012 台北富邦', '013 國泰世華', '017 兆豐銀行', '048 王道銀行', '050 臺灣企銀', '052 渣打銀行',
+    '053 台中銀行', '081 匯豐銀行', '103 新光銀行', '108 陽信銀行', '700 中華郵政', '803 聯邦銀行', '805 遠東銀行',
+    '806 元大銀行', '807 永豐銀行', '808 玉山銀行', '809 凱基銀行', '810 星展銀行', '812 台新銀行', '822 中國信託',
+    '823 將來銀行', '824 連線銀行（LINE Bank）', '826 樂天銀行'];
+
+  async function openBank() {
+    const box = document.getElementById('bankBox');
+    if (!box) return;
+    box.innerHTML = '<p class="muted">讀取中…</p>';
+    let d;
+    try {
+      d = await api('bankGet');
+    } catch (e) {
+      box.innerHTML = '<p class="warn-text">' + esc(e.message) + '</p><button class="btn ghost block" type="button" id="bankOpen">再試一次</button>';
+      document.getElementById('bankOpen').addEventListener('click', openBank);
+      return;
+    }
+    drawBank(d, !d.has);
+  }
+
+  function drawBank(d, editing) {
+    const box = document.getElementById('bankBox');
+    if (!box) return;
+    const cur = d.has
+      ? '<div class="cashbox"><div><span class="muted">銀行</span>　<b>' + esc(d.bank || '（未填）') + '</b></div>' +
+        '<div><span class="muted">帳號</span>　<b>' + (d.tail ? '•••• ' + esc(d.tail) : '（未填）') + '</b> <span class="muted">（只顯示末五碼）</span></div></div>'
+      : '<p class="warn-text">還沒有登錄匯款帳戶</p>';
+    if (!editing) {
+      box.innerHTML = cur + '<button class="btn ghost block" type="button" id="bankEdit">修改匯款帳戶</button>';
+      document.getElementById('bankEdit').addEventListener('click', () => drawBank(d, true));
+      return;
+    }
+    box.innerHTML = (d.has ? cur : '') + `
+      <form id="fBank" class="form" autocomplete="off">
+        <label>銀行<input name="bank" list="bankList" required maxlength="40" placeholder="點一下選擇，或輸入「代碼 銀行名」" value="${esc(d.bank || '')}"></label>
+        <datalist id="bankList">${BANKS.map((b) => '<option value="' + esc(b) + '">').join('')}</datalist>
+        <label>帳號<input name="account" inputmode="numeric" required maxlength="24" placeholder="只填數字" autocomplete="off"></label>
+        <label>再輸入一次帳號<input name="account2" inputmode="numeric" required maxlength="24" placeholder="確認用" autocomplete="off"></label>
+        <p class="muted">戶名須是你本人。儲存後馬上生效，LINE 會傳一則通知給你。</p>
+        <div class="actions">
+          ${d.has ? '<button class="btn ghost" type="button" id="bankCancel">取消</button>' : ''}
+          <button class="btn" type="submit">儲存</button>
+        </div>
+      </form>`;
+    const form = document.getElementById('fBank');
+    const cancel = document.getElementById('bankCancel');
+    if (cancel) cancel.addEventListener('click', () => drawBank(d, false));
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const digits = (v) => String(v || '').replace(/\D/g, '');
+      const data = { bank: form.bank.value.trim(), account: digits(form.account.value), account2: digits(form.account2.value) };
+      if (!data.bank) return toast('請選擇或填寫銀行', 'error');
+      if (!/^\d{8,16}$/.test(data.account)) return toast('帳號請填 8～16 位數字', 'error');
+      if (data.account !== data.account2) return toast('兩次輸入的帳號不一樣', 'error');
+      const res = await act(() => api('bankSave', data));
+      if (res) drawBank(res, false);
     });
   }
 
