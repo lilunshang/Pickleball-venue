@@ -1,5 +1,5 @@
 ﻿/**
- * venue/app.js — 場主 LIFF 頁面　v3.5（2026/11/8：我的資料加「匯款帳戶」，可自己登錄／修改；?page=profile&sec=bank 直接打開）；v3.1（2026/11/1：我的排班改成整個月的月曆，可依地區、據點篩選；cal.js）；v2.5（2026/10/21：顯示付款人、同一付款人一起收款）；v2.4（比分在逾時／系統忙碌時保留重送）
+ * venue/app.js — 場主 LIFF 頁面　v3.7（2026/11/10：我的資料加「可排時間」— 可以安排的據點、每週時段、不可排日期，和教練 OA 共用；?page=profile&sec=avail 直接打開）；v3.5（2026/11/8：我的資料加「匯款帳戶」，可自己登錄／修改；?page=profile&sec=bank 直接打開）；v3.1（2026/11/1：我的排班改成整個月的月曆，可依地區、據點篩選；cal.js）；v2.5（2026/10/21：顯示付款人、同一付款人一起收款）；v2.4（比分在逾時／系統忙碌時保留重送）
  * v2.3（2026/10/19：開頁更快；含 v2.2 讀取優化、v2.1 我已到場定位）
  * v2.3：LINE 登入（liff.init）完成前就先顯示上次的畫面；切回 LINE 時立刻更新；排班頁預先載入今天的名單
  * v2.2：開頁一次 init、先顯示上次的資料再更新、30 秒輪詢只比對簽章、比分與簽到先更新畫面
@@ -44,6 +44,7 @@
       state.page = PAGES.indexOf(p.get('page')) >= 0 ? p.get('page') : 'shifts';
       state.shiftId = p.get('shift') || '';
       state.wantBank = p.get('sec') === 'bank'; // v3.5
+      state.wantAvail = p.get('sec') === 'avail'; // v3.7
       if (TABS.some((t) => t[0] === p.get('tab'))) state.tab = p.get('tab');
       window.addEventListener('online', flushScores);
       state.flushTimer = setInterval(flushScores, FLUSH_MS);
@@ -1173,7 +1174,96 @@
         '<div id="bankBox"><button class="btn ghost block" type="button" id="bankOpen">查看／修改匯款帳戶</button></div></div>');
       document.getElementById('bankOpen').addEventListener('click', openBank);
       if (state.wantBank && !state.stale) { state.wantBank = false; openBank(); }
+      // v3.7：可排時間（據點、每週時段、不可排日期；和教練 OA 共用）
+      app.insertAdjacentHTML('beforeend', '<div class="card" id="availCard"><h2>可排時間</h2>' +
+        '<p class="muted">可以安排的據點、每週時段，和不能排班的日期。同時是場主和教練的人填一次，兩邊共用。</p>' +
+        '<div id="availBox"><button class="btn ghost block" type="button" id="availOpen">查看／修改可排時間</button></div></div>');
+      document.getElementById('availOpen').addEventListener('click', openAvail);
+      if (state.wantAvail && !state.stale) { state.wantAvail = false; openAvail(); document.getElementById('availCard').scrollIntoView(); }
     }
+  }
+
+  /* ---------- v3.7 可排時間（1_人員_可排時段、2_教練不可排日期；打開才讀） ---------- */
+  async function openAvail() {
+    const box = document.getElementById('availBox');
+    box.innerHTML = '<p class="muted">讀取中…</p>';
+    let d;
+    try {
+      d = await api('availGet');
+    } catch (e) {
+      box.innerHTML = '<p class="warn-text">' + esc(e.message) + '</p><button class="btn ghost block" type="button" id="availOpen">再試一次</button>';
+      document.getElementById('availOpen').addEventListener('click', openAvail);
+      return;
+    }
+    drawAvail(d);
+  }
+
+  function dayText(k) {
+    const p = k.split('-').map(Number);
+    return p[1] + '/' + p[2] + '（' + '日一二三四五六'.charAt(new Date(p[0], p[1] - 1, p[2]).getDay()) + '）';
+  }
+
+  function drawAvail(d, conflicts) {
+    const box = document.getElementById('availBox');
+    const vs = new Set(d.mine.venues);
+    const ks = new Set(d.mine.slots);
+    let region = null;
+    const venues = d.choices.map((v) => {
+      const head = v.region !== region ? '<div class="av-region">' + esc((region = v.region) || '其他') + '</div>' : '';
+      return head + '<div class="av-venue' + (vs.has(v.id) ? '' : ' off') + '" data-venue="' + esc(v.id) + '">' +
+        '<label class="av-v"><input type="checkbox"' + (vs.has(v.id) ? ' checked' : '') + '> ' + esc(v.name) + '</label>' +
+        '<div class="mc-chips">' + v.slots.map((s) => '<button type="button" class="mc-chip' + (ks.has(s.key) ? ' on' : '') + '" data-key="' + esc(s.key) + '">' + esc(s.label) + '</button>').join('') + '</div></div>';
+    }).join('');
+    const today = new Date();
+    const t0 = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    const offs = d.off.map((o) => '<div class="av-off"><span>' + esc(o.start === o.end ? dayText(o.start) : dayText(o.start) + ' ～ ' + dayText(o.end)) + '<br><span class="muted">' + esc(o.reason || '（未填原因）') + '</span></span>' +
+      '<button class="btn ghost" type="button" data-off="' + esc(o.id) + '">刪除</button></div>').join('');
+    const warn = conflicts && conflicts.length ? '<div class="cashbox" style="margin-bottom:10px"><b>這段期間有 ' + conflicts.length + ' 場球敘排給你，已通知管理員安排代班：</b><br>' +
+      conflicts.map((c) => esc(c.dateText + ' ' + c.start + '　' + c.name)).join('<br>') + '</div>' : '';
+    box.innerHTML = warn +
+      '<h3 class="av-h">可以安排的據點與時段</h3>' +
+      (d.ready ? '<p class="muted">勾據點，再點那個據點可以的時段；據點有勾、時段都沒點＝那個據點全部時段都可以。</p>' + (venues || '<p class="muted">目前沒有可以選的據點</p>') +
+        '<button class="btn block" type="button" id="availSave">儲存可排時間</button>' +
+        '<p class="muted" style="margin-top:6px">' + (d.mine.filled && d.mine.updated ? '上次更新：' + esc(String(d.mine.updated).slice(0, 10).replace(/-/g, '/')) : '還沒填過') + '</p>'
+        : '<p class="warn-text">系統還沒開放這個功能，請聯絡營運</p>') +
+      '<h3 class="av-h">不可排日期</h3>' +
+      '<form id="fOff" class="form" autocomplete="off"><div class="av-row"><label>開始日期<input type="date" name="start" required min="' + t0 + '" value="' + t0 + '"></label>' +
+      '<label>結束日期<input type="date" name="end" min="' + t0 + '"></label></div>' +
+      '<label>原因<input name="reason" maxlength="200" placeholder="例：出國、比賽"></label>' +
+      '<button class="btn ghost block" type="submit" style="margin-top:10px">新增不可排日期</button></form>' +
+      '<div class="av-offs">' + (offs || '<p class="muted">目前沒有登記（今天以後）</p>') + '</div>';
+    box.querySelectorAll('.av-venue').forEach((w) => {
+      w.querySelector('.av-v input').addEventListener('change', (e) => w.classList.toggle('off', !e.target.checked));
+      w.querySelectorAll('.mc-chip').forEach((b) => b.addEventListener('click', () => b.classList.toggle('on')));
+    });
+    const save = document.getElementById('availSave');
+    if (save) save.addEventListener('click', async () => {
+      const venues = [];
+      const slots = [];
+      box.querySelectorAll('.av-venue').forEach((w) => {
+        if (!w.querySelector('.av-v input').checked) return;
+        venues.push(w.dataset.venue);
+        w.querySelectorAll('.mc-chip.on').forEach((b) => slots.push(b.dataset.key));
+      });
+      if (!venues.length) return toast('請至少勾選一個可以安排的據點', 'error');
+      const res = await act(() => api('availSave', { venues: venues, slots: slots }));
+      if (res) drawAvail(res);
+    });
+    const f = document.getElementById('fOff');
+    f.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const start = f.start.value;
+      const end = f.end.value || start;
+      if (!start) return toast('請選擇開始日期', 'error');
+      if (end < start) return toast('結束日期不能早於開始日期', 'error');
+      const res = await act(() => api('offSave', { start: start, end: end, reason: f.reason.value.trim() }));
+      if (res) drawAvail(res, res.conflicts);
+    });
+    box.querySelectorAll('[data-off]').forEach((b) => b.addEventListener('click', async () => {
+      if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = '確定刪除？'; setTimeout(() => { b.dataset.armed = ''; b.textContent = '刪除'; }, 4000); return; }
+      const res = await act(() => api('offDelete', { id: b.dataset.off }));
+      if (res) drawAvail(res);
+    }));
   }
 
   /* ---------- v3.5 匯款帳戶（1_人員_請款資料；打開才讀，不存在手機裡） ---------- */
