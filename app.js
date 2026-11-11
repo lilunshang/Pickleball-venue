@@ -423,6 +423,7 @@
           <div><b>${sum.walkinPending + (s.started ? sum.waitlist : 0)}</b><span>待處理</span></div>
           <div><b>${money(sum.systemTotal)}</b><span>我收的款</span></div>
         </div>
+        ${s.charter ? `<div class="chbar">🔒 包場 <b>${esc(s.charter.courts)}</b>・${s.charter.people || '—'} 人${s.charter.contact ? '　聯絡人 ' + esc(s.charter.contact) + (s.charter.phone ? ' <a href="tel:' + esc(s.charter.phone) + '">' + esc(s.charter.phone) + '</a>' : '') : ''}<div class="muted">名單只有聯絡人，不用逐一點名；場主費照包場人數算。</div></div>` : ''}
         ${s.racket && s.racket.on ? `<div class="rkbar">🏓 本場需要球拍 <b>${sum.rackets || 0}</b> 支${s.racket.left === null ? '' : '　還可租 ' + s.racket.left + ' 支'}${s.racket.used > (sum.rackets || 0) ? '<span class="muted">（同時段其他場另借 ' + (s.racket.used - (sum.rackets || 0)) + ' 支）</span>' : ''}</div>` : ''}
         ${arrived
           ? `<div class="arrived">✓ ${esc(r.shift.arrive)}　${esc(r.shift.arriveTime)}</div>`
