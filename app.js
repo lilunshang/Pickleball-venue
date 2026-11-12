@@ -1,5 +1,5 @@
 ﻿/**
- * venue/app.js — 場主 LIFF 頁面　v3.7（2026/11/10：我的資料加「可排時間」— 可以安排的據點、每週時段、不可排日期，和教練 OA 共用；?page=profile&sec=avail 直接打開）；v3.5（2026/11/8：我的資料加「匯款帳戶」，可自己登錄／修改；?page=profile&sec=bank 直接打開）；v3.1（2026/11/1：我的排班改成整個月的月曆，可依地區、據點篩選；cal.js）；v2.5（2026/10/21：顯示付款人、同一付款人一起收款）；v2.4（比分在逾時／系統忙碌時保留重送）
+ * venue/app.js — 場主 LIFF 頁面　v3.9（2026/11/12：應交／交付 — 收班回報改成確認手上的錢與應交相符，我的資料加「應交與交付」（當月收的錢全部繳回公司並記錄，場主費另外照付、不互抵，?page=profile&sec=due）；收班回報加「還沒收款」清單、名單外收入（匹客城／IG／其他：人數→應收、填實收）、臨時租拍；應交＝現金＋匹客城）；v3.7（2026/11/10：我的資料加「可排時間」— 可以安排的據點、每週時段、不可排日期，和教練 OA 共用；?page=profile&sec=avail 直接打開）；v3.5（2026/11/8：我的資料加「匯款帳戶」，可自己登錄／修改；?page=profile&sec=bank 直接打開）；v3.1（2026/11/1：我的排班改成整個月的月曆，可依地區、據點篩選；cal.js）；v2.5（2026/10/21：顯示付款人、同一付款人一起收款）；v2.4（比分在逾時／系統忙碌時保留重送）
  * v2.3（2026/10/19：開頁更快；含 v2.2 讀取優化、v2.1 我已到場定位）
  * v2.3：LINE 登入（liff.init）完成前就先顯示上次的畫面；切回 LINE 時立刻更新；排班頁預先載入今天的名單
  * v2.2：開頁一次 init、先顯示上次的資料再更新、30 秒輪詢只比對簽章、比分與簽到先更新畫面
@@ -45,6 +45,7 @@
       state.shiftId = p.get('shift') || '';
       state.wantBank = p.get('sec') === 'bank'; // v3.5
       state.wantAvail = p.get('sec') === 'avail'; // v3.7
+      state.wantDue = p.get('sec') === 'due'; // v3.9
       if (TABS.some((t) => t[0] === p.get('tab'))) state.tab = p.get('tab');
       window.addEventListener('online', flushScores);
       state.flushTimer = setInterval(flushScores, FLUSH_MS);
@@ -230,7 +231,7 @@
     if (res) {
       applyResult(res);
       closeModal();
-      drawSession();
+      if (state.page === 'report') renderReport(); else drawSession(); // v3.9：收班回報頁也會收款
     }
     return res;
   }
@@ -1084,6 +1085,8 @@
     const sh = r.shift;
     const sum = r.summary;
     const notDone = r.game.reduce((n, g) => n + (g.total - g.done), 0);
+    const hand = sum.systemHand === undefined ? sum.systemCash : sum.systemHand; // v3.9
+    const can = s.editable;
 
     app.innerHTML = `
       <h1>收班回報</h1>
@@ -1092,15 +1095,23 @@
         <div class="muted">${esc(s.date)}　${esc(s.start)}–${esc(s.end)}　${esc(s.venue)}</div>
         ${notDone ? `<p class="warn-text">還有 ${notDone} 場沒有比分；沒打的場次可在「輪轉」刪除。</p>` : ''}
       </div>
+      ${unpaidCard(r, can)}
+      ${outsideCard(r, can)}
       <form id="fReport" class="card form">
         <div class="cashbox">
-          <div>應交現金 <b>${money(sum.systemCash)}</b></div>
-          <div class="muted">＝本場我收的現金：現場報名 ${money(sum.systemCash - (sum.racketCash || 0))}${s.racket && s.racket.on ? '＋現場租拍 ' + money(sum.racketCash || 0) : ''}</div>
-          <div class="muted">全部收款（含轉帳等）${money(sum.systemTotal)}</div>
+          <div>本場應交 <b>${money(hand)}</b></div>
+          <div class="muted">＝我收的現金 ${money(sum.systemCash)}（名單內報名 ${money(sum.systemCash - (sum.racketCash || 0) - (sum.outsideCash || 0))}${s.racket && s.racket.on ? '・租拍 ' + money(sum.racketCash || 0) : ''}${sum.outsideCash ? '・名單外 ' + money(sum.outsideCash) : ''}）${sum.systemPickle ? '＋匹客城 ' + money(sum.systemPickle) : ''}</div>
+          <div class="muted">轉帳、LINE Pay 已直接進公司帳戶，不算應交</div>
         </div>
-        <label>實際交接金額<input name="cash" type="number" inputmode="numeric" min="0" value="${esc(sh.cash === '' ? sum.systemCash : sh.cash)}"></label>
+        <p class="muted">應交＝應該要給公司的錢。<b>當月收的錢請在月底前全部繳回公司</b>（轉帳或交給主理人），繳回後到「資料 → 應交與交付」記錄。場主費由公司另外匯給你。</p>
+        <label>手上這場的錢和應交一樣嗎？</label>
+        <div class="choice" style="margin-top:6px">
+          <label style="margin:0;font-weight:400"><input type="radio" name="match" value="1" style="width:auto;display:inline" ${sh.cash === '' || sh.cash === hand ? 'checked' : ''}> 一樣</label>
+          <label style="margin:0;font-weight:400"><input type="radio" name="match" value="0" style="width:auto;display:inline" ${sh.cash !== '' && sh.cash !== hand ? 'checked' : ''}> 不一樣</label>
+        </div>
+        <label id="cashWrap" hidden>手上實際的錢（現金＋匹客城）<input name="cash" type="number" inputmode="numeric" min="0" value="${esc(sh.cash === '' ? hand : sh.cash)}"></label>
         <div id="cashDiff" class="muted"></div>
-        <label id="cashReasonWrap" hidden>差額原因<textarea name="cashReason" rows="2" placeholder="例如找零、少收、學員改轉帳">${esc(sh.cashReason || '')}</textarea></label>
+        <label id="cashReasonWrap" hidden>原因<textarea name="cashReason" rows="2" placeholder="例如找零少 50、一位朋友免費">${esc(sh.cashReason || '')}</textarea></label>
         ${r.fields.newcomers ? `<label>新人接待人數<input name="newcomers" type="number" inputmode="numeric" min="0" value="${esc(sh.newcomers === '' ? sum.newcomers : sh.newcomers)}"></label>` : ''}
         <label>球具狀況
           <select name="equip">
@@ -1117,15 +1128,20 @@
     const form = document.getElementById('fReport');
     const diff = document.getElementById('cashDiff');
     const showDiff = () => {
+      const same = form.match.value !== '0';
+      document.getElementById('cashWrap').hidden = same;
+      if (same) form.cash.value = hand;
       const v = form.cash.value;
       if (v === '') { diff.textContent = ''; document.getElementById('cashReasonWrap').hidden = true; return; }
-      const d = Number(v) - sum.systemCash;
-      diff.textContent = d === 0 ? '✓ 與應交現金相符' : '與應交現金差 ' + (d > 0 ? '+' : '') + d + ' 元，請填寫差額原因';
+      const d = Number(v) - hand;
+      diff.textContent = d === 0 ? (same ? '' : '和應交一樣，請改選「一樣」') : '比應交' + (d > 0 ? '多 ' : '少 ') + Math.abs(d) + ' 元，請寫原因';
       diff.className = d === 0 ? 'ok-text' : 'warn-text';
       document.getElementById('cashReasonWrap').hidden = d === 0;
     };
     form.cash.addEventListener('input', showDiff);
+    form.querySelectorAll('input[name=match]').forEach((el) => el.addEventListener('change', showDiff));
     showDiff();
+    app.querySelectorAll('[data-rep]').forEach((b) => b.addEventListener('click', () => onReportAction(b))); // v3.9
 
     form.addEventListener('submit', async (ev) => {
       ev.preventDefault();
@@ -1140,6 +1156,130 @@
       }), '回報已送出');
       if (res) applyResult(res);
     });
+  }
+
+  /* ---------- v3.9：收班回報的收款、名單外收入、臨時租拍 ---------- */
+
+  /** 名單內還沒收清的人（系統報名、未付款）→ 直接收款 */
+  function unpaidCard(r, can) {
+    const list = (r.people || []).filter((p) => p.status === '已報名' && p.hasAr && p.unpaid > 0);
+    if (!list.length) return '';
+    return `
+      <div class="card">
+        <h2>還沒收款 <span class="muted">${list.length} 人・${money(list.reduce((t, p) => t + p.unpaid, 0))}</span></h2>
+        <p class="muted">系統報名、還沒付款的人。現場有收錢就按「收款」逐人記錄，應交金額才會算進去。</p>
+        ${list.map((p) => `
+          <div class="row" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0">
+            <span>${esc(p.name)}　<span class="due">未收 ${money(p.unpaid)}</span>${p.attend === '出席' ? '' : ' <span class="muted">未簽到</span>'}</span>
+            ${can ? `<button class="btn sm amber" type="button" data-rep="collect" data-id="${esc(p.regId)}">收款</button>` : ''}
+          </div>`).join('')}
+      </div>`;
+  }
+
+  /** 名單外（匹客城／IG／其他）與臨時租拍 */
+  function outsideCard(r, can) {
+    const o = r.outside;
+    if (!o || !o.on) return '';
+    const rk = r.session.racket;
+    const rows = o.list.map((x) => {
+      const what = x.kind === 'racket' ? `臨時租拍 ${x.n} 支` : `${esc(x.source || '名單外')} ${x.n} 人`;
+      const gap = x.due - x.paid;
+      return `
+        <div class="row" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0">
+          <span>${what}<br><span class="muted">應收 ${money(x.due)}・實收 ${money(x.paid)}${x.method ? '（' + esc(x.method) + '）' : ''}${gap > 0 ? '・<span class="warn-text">差 ' + money(gap) + '</span>' : ''}${x.note ? '・' + esc(x.note) : ''}</span></span>
+          ${can && x.mine && (!x.status || x.status === '待確認') ? `<button class="btn sm ghost" type="button" data-rep="outDel" data-id="${esc(x.id)}">刪除</button>` : ''}
+        </div>`;
+    }).join('');
+    return `
+      <div class="card">
+        <h2>名單外收入</h2>
+        <p class="muted">不在系統名單的人（匹客城、IG、其他），填人數和實收就好，不用逐一登記。名單外的人租球拍記在「臨時租拍」。</p>
+        ${rows || '<p class="muted">還沒有記錄。</p>'}
+        ${can ? `<div class="btns">
+          <button class="btn sm" type="button" data-rep="outAdd" data-kind="signup">＋名單外報名</button>
+          ${rk && rk.on ? '<button class="btn sm" type="button" data-rep="outAdd" data-kind="racket">＋臨時租拍</button>' : ''}
+        </div>` : ''}
+      </div>`;
+  }
+
+  function onReportAction(b) {
+    const r = state.roster;
+    const id = b.dataset.id;
+    switch (b.dataset.rep) {
+      case 'collect': {
+        const p = r.people.find((x) => x.regId === id);
+        return p ? openCollect(p) : null;
+      }
+      case 'outAdd':
+        return openOutside(b.dataset.kind);
+      case 'outDel':
+        if (!confirm('刪除這筆名單外紀錄？')) return null;
+        return rosterAct('outsideDelete', { id: id }, '已刪除');
+      default:
+        return null;
+    }
+  }
+
+  function openOutside(kind) {
+    const r = state.roster;
+    const o = r.outside;
+    const racket = kind === 'racket';
+    const rk = r.session.racket;
+    const unit = racket ? rk.fee : r.session.fee;
+    const max = racket ? Math.min(20, rk.left === null ? 20 : rk.left) : 40;
+    if (racket && max < 1) { toast('球拍已經租完了', 'error'); return; }
+    modal.innerHTML = `
+      <div class="sheet">
+        <h2>${racket ? '臨時租拍（名單外的人）' : '名單外報名'}</h2>
+        ${racket ? `<p class="muted">每支 ${money(unit)}${rk.left === null ? '' : '；還可租 ' + rk.left + ' 支'}。名單內的人租拍請在點名頁按「更多」。</p>`
+          : `<p class="muted">本場報名費每人 ${money(unit)}。</p>
+        <label>來源<select id="oSource">${o.sources.map((x) => `<option>${esc(x)}</option>`).join('')}</select></label>`}
+        <label>${racket ? '支數' : '人數'}<input id="oN" type="number" inputmode="numeric" min="1" max="${max}" value="1"></label>
+        <p>應收 <b id="oDue">${money(unit)}</b></p>
+        <label>實收金額<input id="oGot" type="number" inputmode="numeric" min="0" value="${unit}"></label>
+        <p class="muted" id="oGap"></p>
+        <label>收款方式<select id="oMethod">${o.methods.filter((m) => !racket || m !== '匹客城').map((m) => `<option>${esc(m)}</option>`).join('')}</select></label>
+        <label id="oLast5Wrap" hidden>帳號末五碼<input id="oLast5" inputmode="numeric" maxlength="5"></label>
+        <label>備註<input id="oNote" maxlength="150" placeholder="例：一位租拍、兩位 IG 報名"></label>
+        <p class="muted">現金和匹客城的錢在你手上，會算進應交金額；送出後為「待確認」，由營運對帳。</p>
+        <div class="actions">
+          <button class="btn ghost" id="oCancel">取消</button>
+          <button class="btn" id="oOk">送出</button>
+        </div>
+      </div>`;
+    modal.hidden = false;
+    const nEl = document.getElementById('oN');
+    const gotEl = document.getElementById('oGot');
+    const method = document.getElementById('oMethod');
+    const src = document.getElementById('oSource');
+    let gotTouched = false;
+    const sync = () => {
+      const n = Math.max(0, Math.floor(Number(nEl.value) || 0));
+      const due = n * unit;
+      document.getElementById('oDue').textContent = money(due);
+      if (!gotTouched) gotEl.value = due;
+      const gap = due - (Number(gotEl.value) || 0);
+      const g = document.getElementById('oGap');
+      g.textContent = gap > 0 ? '比應收少 ' + gap + ' 元，差額會留給營運處理；原因可寫在備註' : gap < 0 ? '比應收多 ' + (-gap) + ' 元' : '';
+      g.className = gap ? 'warn-text' : 'muted';
+      document.getElementById('oLast5Wrap').hidden = method.value !== '轉帳';
+    };
+    nEl.addEventListener('input', sync);
+    gotEl.addEventListener('input', () => { gotTouched = true; sync(); });
+    method.addEventListener('change', sync);
+    if (src) src.addEventListener('change', () => { method.value = src.value === '匹客城' ? '匹客城' : '現金'; sync(); });
+    if (src) method.value = src.value === '匹客城' ? '匹客城' : '現金';
+    sync();
+    document.getElementById('oCancel').addEventListener('click', closeModal);
+    document.getElementById('oOk').addEventListener('click', () => rosterAct('outsideAdd', {
+      kind: racket ? 'racket' : 'signup',
+      source: src ? src.value : '',
+      n: Number(nEl.value),
+      received: gotEl.value,
+      method: method.value,
+      last5: document.getElementById('oLast5').value,
+      note: document.getElementById('oNote').value,
+    }));
   }
 
   /* ---------- 我的資料（註冊／修改） ---------- */
@@ -1170,6 +1310,12 @@
       }
     });
     if (!isRegister) {
+      // v3.9：應交與交付（月底和場主費一起結；月中可先交付）
+      app.insertAdjacentHTML('beforeend', '<div class="card" id="dueCard"><h2>應交與交付</h2>' +
+        '<p class="muted"><b>應交</b>＝你收的現金＋匹客城，應該要給公司的錢。<b>交付</b>＝你實際已經繳回公司的錢。<br>當月收的錢請在月底前（最晚次月 5 日）全部繳回，繳回後在這裡記錄。場主費由公司每月另外匯給你，不會互抵。</p>' +
+        '<div id="dueBox"><button class="btn ghost block" type="button" id="dueOpen">查看本月應交</button></div></div>');
+      document.getElementById('dueOpen').addEventListener('click', () => openDue());
+      if (state.wantDue && !state.stale) { state.wantDue = false; openDue(); }
       app.insertAdjacentHTML('beforeend', '<div class="card" id="bankCard"><h2>匯款帳戶</h2>' +
         '<p class="muted">場主費、教練費會匯到這個帳戶。同時是場主和教練的人只要填一次，兩邊共用。</p>' +
         '<div id="bankBox"><button class="btn ghost block" type="button" id="bankOpen">查看／修改匯款帳戶</button></div></div>');
@@ -1182,6 +1328,66 @@
       document.getElementById('availOpen').addEventListener('click', openAvail);
       if (state.wantAvail && !state.stale) { state.wantAvail = false; openAvail(); document.getElementById('availCard').scrollIntoView(); }
     }
+  }
+
+  /* ---------- v3.9 應交與交付（打開才讀） ---------- */
+  async function openDue(ym) {
+    const box = document.getElementById('dueBox');
+    if (!box) return;
+    box.innerHTML = '<p class="muted">讀取中…</p>';
+    try {
+      drawDue(await api('dueGet', { ym: ym || '' }));
+    } catch (e) {
+      box.innerHTML = '<p class="warn-text">' + esc(e.message) + '</p><button class="btn ghost block" type="button" id="dueOpen">再試一次</button>';
+      document.getElementById('dueOpen').addEventListener('click', () => openDue(ym));
+    }
+  }
+
+  function drawDue(d, adding) {
+    const box = document.getElementById('dueBox');
+    if (!box) return;
+    const mlabel = (ym) => Number(ym.slice(5)) + ' 月';
+    const chips = '<div class="chips">' + [d.cur, d.prev].map((ym) => `<button type="button" class="${ym === d.ym ? 'on' : ''}" data-dym="${ym}">${mlabel(ym)}</button>`).join('') + '</div>';
+    const days = d.days.length ? d.days.map((x) => `<div class="row" style="margin:4px 0"><span>${esc(x.date.slice(5).replace('-', '/'))}</span><span class="muted">${x.cash ? '現金 ' + money(x.cash) : ''}${x.cash && x.pickle ? '・' : ''}${x.pickle ? '匹客城 ' + money(x.pickle) : ''}</span></div>`).join('') : '<p class="muted">這個月還沒有現金或匹客城的收款。</p>';
+    const hands = d.hands.map((h) => `<div class="row" style="margin:6px 0"><span>${esc(h.date.slice(5).replace('-', '/'))}　${money(h.amount)}<br><span class="muted">${esc(h.method)}${h.last5 ? '・末五碼 ' + esc(h.last5) : ''}${h.note ? '・' + esc(h.note) : ''}</span></span>` +
+      `<span>${h.status === '已確認' ? '<span class="tag green">已確認</span>' : h.status === '有誤' ? '<span class="tag orange">有誤</span>' : '<span class="tag">待確認</span> <button class="btn sm ghost" type="button" data-ddel="' + esc(h.id) + '">刪除</button>'}</span></div>`).join('');
+    box.innerHTML = chips + `
+      <div class="cashbox">
+        <div>${mlabel(d.ym)}應交 <b>${money(d.due)}</b> <span class="muted">（現金 ${money(d.cash)}・匹客城 ${money(d.pickle)}）</span></div>
+        <div>已交付 <b>${money(d.handed)}</b></div>
+        <div>還沒繳回 <b>${money(d.left)}</b>${d.left > 0 ? ' <span class="muted">→ 請在月底前繳回公司</span>' : ''}</div>
+      </div>
+      <h2 style="margin-top:12px">每天的應交</h2>${days}
+      <h2 style="margin-top:12px">繳回紀錄</h2>${hands || '<p class="muted">還沒有繳回紀錄。</p>'}
+      ${d.on ? (adding ? `
+      <form id="fDue" class="form">
+        <label>交付日期<input name="date" type="date" required value="${esc(todayStr())}"></label>
+        <label>金額<input name="amount" type="number" inputmode="numeric" min="1" required></label>
+        <label>方式<select name="method">${d.methods.map((m) => '<option>' + esc(m) + '</option>').join('')}</select></label>
+        <label id="dLast5">帳號末五碼（轉出帳戶）<input name="last5" inputmode="numeric" maxlength="5"></label>
+        <label>備註<input name="note" maxlength="200" placeholder="例：11/1–11/15 的現金"></label>
+        <p class="muted">轉帳到公司帳戶或交給主理人後再記錄；主理人確認後會顯示「已確認」。</p>
+        <div class="actions"><button class="btn ghost" type="button" id="dueCancel">取消</button><button class="btn" type="submit">記錄繳回</button></div>
+      </form>` : '<button class="btn block" type="button" id="dueAdd">＋記錄繳回</button>') : ''}`;
+    box.querySelectorAll('[data-dym]').forEach((b) => b.addEventListener('click', () => openDue(b.dataset.dym)));
+    box.querySelectorAll('[data-ddel]').forEach((b) => b.addEventListener('click', async () => {
+      if (!confirm('刪除這筆交付紀錄？')) return;
+      const r = await act(() => api('dueDelete', { id: b.dataset.ddel }));
+      if (r) drawDue(r);
+    }));
+    const add = document.getElementById('dueAdd');
+    if (add) add.addEventListener('click', () => drawDue(d, true));
+    const f = document.getElementById('fDue');
+    if (!f) return;
+    const sync = () => { document.getElementById('dLast5').hidden = f.method.value !== '轉帳'; };
+    f.method.addEventListener('change', sync);
+    sync();
+    document.getElementById('dueCancel').addEventListener('click', () => drawDue(d));
+    f.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const r = await act(() => api('dueAdd', { date: f.date.value, amount: f.amount.value, method: f.method.value, last5: f.last5.value, note: f.note.value }));
+      if (r) drawDue(r);
+    });
   }
 
   /* ---------- v3.7 可排時間（1_人員_可排時段、2_教練不可排日期；打開才讀） ---------- */
