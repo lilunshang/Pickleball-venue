@@ -296,3 +296,7 @@ body.stale #app .btn, body.stale #app [data-act] { opacity: .55; pointer-events:
 .hc-form.short { color: #8A4500; }
 .futurebar { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #FFF6EC; border: 1px solid #F0C99A; color: #6B3600; font-size: 14px; }
 .mc-d .c { white-space: nowrap; }
+.hc-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.hc-adj { font-size: 13px; background: #eef3fb; color: #1f3f73; border-radius: 8px; padding: 8px 10px; }
+.hc-btns { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; }
+.hc-btns:empty { display: none; }

@@ -122,7 +122,7 @@ var MonthCal = (function () {
     ];
     groups.forEach(function (g) {
       if (!g.items.length) return;
-      var open = !!st.open[g.key];
+      var open = st.day ? true : !!st.open[g.key]; // v3.12：只看一天時兩組都展開
       wrap.appendChild(h('button', { type: 'button', class: 'mc-sec' + (open ? ' open' : '') + ' ' + g.key, 'aria-expanded': open ? 'true' : 'false',
         onclick: function () { st.open[g.key] = !open; again(); } }, [
         h('span', { class: 'car', text: open ? '▾' : '▸' }),

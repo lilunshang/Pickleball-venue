@@ -296,6 +296,12 @@
   function drawShifts(list, month) {
     month = month || state.shiftMonth || MonthCal.thisMonth();
     const items = list.filter((s) => String(s.date).slice(0, 7) === month);
+    // v3.12：行事曆下方預設顯示最近一場（今天有就今天）；點其他天換成那天；「顯示整個月」看全部
+    if (state.calAuto !== month) {
+      state.calAuto = month;
+      const t = todayStr();
+      state.cal.day = items.filter((x) => x.date >= t && x.sessionStatus !== '取消').map((x) => x.date).sort()[0] || '';
+    }
     app.innerHTML = '<h1>我的排班</h1><div id="calBox"></div>';
     MonthCal.render(document.getElementById('calBox'), {
       month: month, today: todayStr(), items: items, state: state.cal, unit: '場',
@@ -329,6 +335,8 @@
         ${countBlock(s)}
         ${seatBlock(s)}`;
     div.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => go(b.dataset.go, b.dataset.shift)));
+    const ob = div.querySelector('[data-outside]');
+    if (ob) ob.addEventListener('click', () => openOutsideShift(s));
     const rel = div.querySelector('[data-release]');
     if (rel) rel.addEventListener('click', () => releaseSeat(s));
     return div;
@@ -340,18 +348,83 @@
     if (!c) return '';
     const pct = c.cap ? Math.min(100, Math.round(c.reg / c.cap * 100)) : 0;
     const future = !s.editable && s.date > todayStr();
+    const o = c.outside || {};
+    const tags = (c.formed ? '<span class="tag green">已成團</span>' : '')
+      + (c.full ? '<span class="tag orange">已額滿</span>' : c.formed ? '' : `<span class="tag orange">報名中${c.form ? '・還沒成團' : ''}</span>`);
     return `<div class="hc">
-        <div class="hc-row"><span>已報名</span><b>${c.reg}${c.cap ? ' ／ ' + c.cap : ''} 人</b></div>
+        <div class="hc-tags">${tags}</div>
+        <div class="hc-row"><span>系統報名</span><b>${c.reg}${c.cap ? ' ／ ' + c.cap : ''} 人</b></div>
         ${c.cap ? `<div class="hc-bar"><i style="width:${pct}%"></i></div>` : ''}
+        ${c.adjusted ? `<div class="hc-adj">系統名額已調整為 ${c.adjusted.to} 人（球面原本 ${c.adjusted.from} 人，其餘留給名單外報名）</div>` : ''}
         <div class="hc-grid">
           ${c.courts.map((x) => `<div>${esc(x.name)}　<b>${x.n}</b> 人</div>`).join('')}
           <div>已付款 <b>${c.paid}</b>・待付 <b>${c.unpaid}</b></div>
           <div>租拍 <b>${c.rackets}</b> 支・候補 <b>${c.wait}</b></div>
+          ${o.on ? `<div>名單外 <b>${o.heads}</b> 人${o.text ? '（' + esc(o.text) + '）' : ''}</div>
+          <div>現場預計 <b>${c.expect}</b> 人${c.hostSeat ? '＋你' : ''}</div>` : ''}
         </div>
-        ${c.hostSeat ? '<div class="muted">學員名額已扣掉你的 1 個位子</div>' : ''}
-        ${c.form ? `<div class="hc-form ${c.form.short ? 'short' : ''}">成團檢查 ${esc(c.form.at)}：${c.form.need} 人成團・${c.form.short ? '目前還差 ' + c.form.short + ' 人' : '人數已夠'}${c.form.keepAll && c.reg < c.form.keepAll ? '（' + c.form.keepAll + ' 人才會保留全部 ' + c.courts.filter((x) => x.name !== '未分面').length + ' 面，不夠會併面）' : ''}</div>` : ''}
-        ${future ? `<button class="btn block" data-go="checkin" data-shift="${esc(s.shiftId)}">看報名名單</button>` : ''}
+        ${c.hostSeat ? '<div class="muted">系統名額已扣掉你的 1 個位子</div>' : ''}
+        ${c.form ? `<div class="hc-form ${c.form.short ? 'short' : ''}">成團檢查 ${esc(c.form.at)}：${c.form.need} 人成團${c.lowCap ? '（名額已調低，門檻跟著調整）' : ''}・${c.form.short ? '目前還差 ' + c.form.short + ' 人' : '人數已夠'}${c.form.keepAll && c.reg < c.form.keepAll ? '（' + c.form.keepAll + ' 人才會保留全部面數，不夠會併面）' : ''}</div>` : ''}
+        <div class="hc-btns">${future ? `<button class="btn" data-go="checkin" data-shift="${esc(s.shiftId)}">看報名名單</button>` : ''}${o.on ? '<button class="btn ghost" data-outside="1">＋名單外報名</button>' : ''}</div>
       </div>`;
+  }
+
+  /** v3.12：排班頁的名單外報名（提前登記；與收班回報同一份紀錄） */
+  function openOutsideShift(s) {
+    const c = s.count;
+    const o = c.outside;
+    const unit = c.fee;
+    const month = state.shiftMonth && state.shiftMonth !== MonthCal.thisMonth() ? state.shiftMonth : '';
+    const send = async (action, data) => {
+      const res = await act(() => api(action, Object.assign({ shiftId: s.shiftId, from: 'shifts', month: month }, data)));
+      if (!res) return;
+      closeModal();
+      if (month) state.monthShifts[month] = res.shifts;
+      else { state.shifts = res.shifts; saveSnap(); }
+      state.roster = null; // 名單頁的名單外資料要重讀
+      drawShifts(res.shifts, month || undefined);
+    };
+    modal.innerHTML = `
+      <div class="sheet">
+        <h2>名單外報名</h2>
+        <p class="muted">${esc(s.date.slice(5).replace('-', '/'))} ${esc(s.start)}　${esc(s.venue)}・每人 ${money(unit)}<br>不是從我們系統報名的人（匹客城、IG 等）記在這裡。和收班回報是同一份，這裡填過，回報時不用再填。</p>
+        ${o.list.length ? '<h3>已登記</h3>' + o.list.map((x) => `
+          <div class="row" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0">
+            <span>${esc(x.source || '名單外')} ${x.n} 人<br><span class="muted">應收 ${money(x.due)}・${x.paid ? '實收 ' + money(x.paid) : '實收還沒填'}</span></span>
+            ${!x.status || x.status === '待確認' ? `<button class="btn sm ghost" type="button" data-odel="${esc(x.id)}">刪除</button>` : ''}
+          </div>`).join('') : ''}
+        <h3>新增一筆</h3>
+        <label>來源<select id="oSource">${o.sources.map((x) => `<option>${esc(x)}</option>`).join('')}</select></label>
+        <label>人數<input id="oN" type="number" inputmode="numeric" min="1" max="40" value="1"></label>
+        <p>應收 <b id="oDue">${money(unit)}</b>（自動算）</p>
+        <label>實收金額（還沒收可以先空著，當天在收班回報補）<input id="oGot" type="number" inputmode="numeric" min="0" placeholder="NT$"></label>
+        <label id="oMethodWrap" hidden>收款方式<select id="oMethod">${o.methods.map((m) => `<option>${esc(m)}</option>`).join('')}</select></label>
+        <label>備註（選填）<input id="oNote" maxlength="150" placeholder="例：小美揪的朋友"></label>
+        <div class="actions">
+          <button class="btn ghost" id="oCancel">關閉</button>
+          <button class="btn" id="oOk">儲存</button>
+        </div>
+      </div>`;
+    modal.hidden = false;
+    const nEl = document.getElementById('oN');
+    const gotEl = document.getElementById('oGot');
+    const method = document.getElementById('oMethod');
+    const src = document.getElementById('oSource');
+    const sync = () => {
+      document.getElementById('oDue').textContent = money(Math.max(0, Math.floor(Number(nEl.value) || 0)) * unit);
+      document.getElementById('oMethodWrap').hidden = !(Number(gotEl.value) > 0);
+    };
+    nEl.addEventListener('input', sync);
+    gotEl.addEventListener('input', sync);
+    src.addEventListener('change', () => { method.value = src.value === '匹客城' ? '匹客城' : '現金'; });
+    method.value = '匹客城';
+    document.getElementById('oCancel').addEventListener('click', closeModal);
+    document.getElementById('oOk').addEventListener('click', () => send('outsideAdd', {
+      kind: 'signup', source: src.value, n: Number(nEl.value), received: gotEl.value, method: method.value, note: document.getElementById('oNote').value,
+    }));
+    modal.querySelectorAll('[data-odel]').forEach((b) => b.addEventListener('click', () => {
+      if (confirm('刪除這筆名單外紀錄？')) send('outsideDelete', { id: b.dataset.odel });
+    }));
   }
 
   /** v3.3（11/3）：讓出名額 — 可讓出顯示按鈕；已讓出顯示時間；其他情況不顯示 */
@@ -1218,7 +1291,8 @@
       return `
         <div class="row" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0">
           <span>${what}<br><span class="muted">應收 ${money(x.due)}・實收 ${money(x.paid)}${x.method ? '（' + esc(x.method) + '）' : ''}${gap > 0 ? '・<span class="warn-text">差 ' + money(gap) + '</span>' : ''}${x.note ? '・' + esc(x.note) : ''}</span></span>
-          ${can && x.mine && (!x.status || x.status === '待確認') ? `<button class="btn sm ghost" type="button" data-rep="outDel" data-id="${esc(x.id)}">刪除</button>` : ''}
+          <span style="display:flex;gap:6px;flex:0 0 auto">${can && !x.paid ? `<button class="btn sm" type="button" data-rep="outPay" data-id="${esc(x.id)}">補實收</button>` : ''}
+          ${can && x.mine && (!x.status || x.status === '待確認') ? `<button class="btn sm ghost" type="button" data-rep="outDel" data-id="${esc(x.id)}">刪除</button>` : ''}</span>
         </div>`;
     }).join('');
     return `
@@ -1243,12 +1317,40 @@
       }
       case 'outAdd':
         return openOutside(b.dataset.kind);
+      case 'outPay': { // v3.12：提前登記、還沒填實收的名單外報名
+        const x = r.outside.list.find((y) => y.id === id);
+        return x ? openOutsidePay(x) : null;
+      }
       case 'outDel':
         if (!confirm('刪除這筆名單外紀錄？')) return null;
         return rosterAct('outsideDelete', { id: id }, '已刪除');
       default:
         return null;
     }
+  }
+
+  function openOutsidePay(x) {
+    const o = state.roster.outside;
+    modal.innerHTML = `
+      <div class="sheet">
+        <h2>補實收</h2>
+        <p class="muted">${esc(x.source || '名單外')} ${x.n} 人・應收 ${money(x.due)}</p>
+        <label>實收金額<input id="pGot" type="number" inputmode="numeric" min="1" value="${x.due}"></label>
+        <label>收款方式<select id="pMethod">${o.methods.map((m) => `<option>${esc(m)}</option>`).join('')}</select></label>
+        <label id="pLast5Wrap" hidden>帳號末五碼<input id="pLast5" inputmode="numeric" maxlength="5"></label>
+        <div class="actions">
+          <button class="btn ghost" id="pCancel">取消</button>
+          <button class="btn" id="pOk">送出</button>
+        </div>
+      </div>`;
+    modal.hidden = false;
+    const method = document.getElementById('pMethod');
+    method.value = x.source === '匹客城' ? '匹客城' : '現金';
+    method.addEventListener('change', () => { document.getElementById('pLast5Wrap').hidden = method.value !== '轉帳'; });
+    document.getElementById('pCancel').addEventListener('click', closeModal);
+    document.getElementById('pOk').addEventListener('click', () => rosterAct('outsidePay', {
+      id: x.id, received: document.getElementById('pGot').value, method: method.value, last5: document.getElementById('pLast5').value,
+    }));
   }
 
   function openOutside(kind) {
