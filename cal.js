@@ -1,10 +1,11 @@
-/**
+﻿/**
  * MonthCal：月曆＋地區／據點篩選＋依日期清單（教練 OA 我的課表、場主 OA 我的排班共用）v2（2026/11/1：清單分「未結束／已結束」可收合）
  * MonthCal.render(box, {
  *   month: 'yyyy-MM', today: 'yyyy-MM-dd',
  *   items: [{ date:'yyyy-MM-dd', venueId, venue, region, ... }],   // 已依時間排序
  *   state: { region, venue, day },                                 // 篩選狀態（呼叫端保存，切月份也保留地區／據點）
  *   unit: '堂', itemNode: (it) => Node, onMonth: (month) => {}, emptyText: '這個月沒有排課',
+ *   dayText: (itemsOfDay) => '12 人'（選填；日期下方的字，空白＝筆數）
  *   isEnded: (it) => bool（選填；預設：日期在今天以前，或今天且結束時間已過）
  * })
  */
@@ -96,7 +97,7 @@ var MonthCal = (function () {
         grid.appendChild(h('button', { type: 'button', class: cls, disabled: !n, 'aria-label': dateLabel(key) + (n ? ' ' + n + ' ' + unit : ''),
           onclick: function () { st.day = st.day === key ? '' : key; again(); } }, [
           h('span', { class: 'n', text: String(+key.slice(8)) }),
-          n ? h('span', { class: 'c', text: String(n) }) : null,
+          n ? h('span', { class: 'c', text: String(opt.dayText ? (opt.dayText(shown.filter(function (it) { return it.date === key; })) || n) : n) }) : null, // v3.11（場主）：dayText 可換成別的字（例如人數）
         ]));
       })(opt.month + '-' + pad(d), count[opt.month + '-' + pad(d)] || 0);
     }

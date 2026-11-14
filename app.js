@@ -179,7 +179,11 @@
 
   tabs.addEventListener('click', (ev) => {
     const b = ev.target.closest('button[data-page]');
-    if (b) go(b.dataset.page);
+    if (!b) return;
+    // v3.11：從排班頁點進未來場次的名單後，再按「現場／回報」分頁要回到今天的場次
+    const cur = state.shiftId && [].concat(state.shifts || [], ...Object.values(state.monthShifts)).find((x) => x.shiftId === state.shiftId);
+    if (cur && !cur.editable && cur.date > todayStr()) state.shiftId = '';
+    go(b.dataset.page);
   });
 
   function renderNotice(title, text) {
@@ -296,6 +300,10 @@
     MonthCal.render(document.getElementById('calBox'), {
       month: month, today: todayStr(), items: items, state: state.cal, unit: '場',
       emptyText: '這個月沒有你的排班。排班由營運安排，有新的排班時會在前一晚提醒你。',
+      dayText: (its) => { // v3.11：日期下方顯示已報名人數（今天以後）
+        const cs = its.filter((x) => x.count);
+        return cs.length ? cs.reduce((t, x) => t + x.count.reg, 0) + ' 人' : '';
+      },
       onMonth: (m) => { state.shiftMonth = m; state.cal.day = ''; renderShifts(); window.scrollTo(0, 0); },
       itemNode: shiftNode,
     });
@@ -318,11 +326,32 @@
           <button class="btn" data-go="checkin" data-shift="${esc(s.shiftId)}">今日球敘</button>
           <button class="btn ghost" data-go="report" data-shift="${esc(s.shiftId)}">收班回報</button>
         </div>` : ''}
+        ${countBlock(s)}
         ${seatBlock(s)}`;
     div.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => go(b.dataset.go, b.dataset.shift)));
     const rel = div.querySelector('[data-release]');
     if (rel) rel.addEventListener('click', () => releaseSeat(s));
     return div;
+  }
+
+  /** v3.11（11/14）：今天以後的場次直接看人數；未來場次可以先看名單（只能看） */
+  function countBlock(s) {
+    const c = s.count;
+    if (!c) return '';
+    const pct = c.cap ? Math.min(100, Math.round(c.reg / c.cap * 100)) : 0;
+    const future = !s.editable && s.date > todayStr();
+    return `<div class="hc">
+        <div class="hc-row"><span>已報名</span><b>${c.reg}${c.cap ? ' ／ ' + c.cap : ''} 人</b></div>
+        ${c.cap ? `<div class="hc-bar"><i style="width:${pct}%"></i></div>` : ''}
+        <div class="hc-grid">
+          ${c.courts.map((x) => `<div>${esc(x.name)}　<b>${x.n}</b> 人</div>`).join('')}
+          <div>已付款 <b>${c.paid}</b>・待付 <b>${c.unpaid}</b></div>
+          <div>租拍 <b>${c.rackets}</b> 支・候補 <b>${c.wait}</b></div>
+        </div>
+        ${c.hostSeat ? '<div class="muted">學員名額已扣掉你的 1 個位子</div>' : ''}
+        ${c.form ? `<div class="hc-form ${c.form.short ? 'short' : ''}">成團檢查 ${esc(c.form.at)}：${c.form.need} 人成團・${c.form.short ? '目前還差 ' + c.form.short + ' 人' : '人數已夠'}${c.form.keepAll && c.reg < c.form.keepAll ? '（' + c.form.keepAll + ' 人才會保留全部 ' + c.courts.filter((x) => x.name !== '未分面').length + ' 面，不夠會併面）' : ''}</div>` : ''}
+        ${future ? `<button class="btn block" data-go="checkin" data-shift="${esc(s.shiftId)}">看報名名單</button>` : ''}
+      </div>`;
   }
 
   /** v3.3（11/3）：讓出名額 — 可讓出顯示按鈕；已讓出顯示時間；其他情況不顯示 */
@@ -429,7 +458,9 @@
         ${arrived
           ? `<div class="arrived">✓ ${esc(r.shift.arrive)}　${esc(r.shift.arriveTime)}</div>`
           : s.editable ? '<button class="btn block" id="btnArrive">我已到場</button><p class="muted" style="text-align:center;margin:6px 0 0">開始前 30 分鐘起、在場地附近才能簽到</p>' : ''}
-        ${!s.editable ? '<p class="muted">此場次目前不可修改（只能在球敘當天或隔天操作）。</p>' : ''}
+        ${!s.editable ? (s.date > todayStr() && s.status !== '取消'
+          ? '<div class="futurebar">還沒到球敘日，只能看名單。點名、收款、現場報名在 ' + esc(s.date.slice(5).replace('-', '/')) + ' 當天操作。</div>'
+          : '<p class="muted">此場次目前不可修改（只能在球敘當天或隔天操作）。</p>') : ''}
         ${pendingN ? `<div class="offline">⚠ ${pendingN} 筆比分待上傳，恢復連線後會自動送出</div>` : ''}
         ${state.stale ? '<div class="stalebar">顯示上次的資料，更新中…</div>' : ''}
       </div>
