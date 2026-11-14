@@ -34,7 +34,32 @@
   const modal = document.getElementById('modal');
   const tabs = document.getElementById('tabs');
 
-  const api = (action, data) => LiffKit.call(CFG.GAS_URL, action, data);
+  // v3.14：開啟計時 — 手機端各段花多久（從網頁開始載入算起，毫秒），開完頁後在背景回報一次（不擋畫面）
+  //   伺服器回傳 perf＝1 才回報（指令碼屬性 PERF_LOG＝off 可關閉）；超過 2.5 秒的其他請求也回報來回時間
+  const APP_VER = '3.14';
+  const PERF = { t: {}, srv: {}, first: '', tok: 0, hop: 0 };
+  function pmark(k) { try { if (!(k in PERF.t)) PERF.t[k] = Math.round(performance.now()); } catch (e) { /* 計時失敗不影響功能 */ } }
+  function perfSend(item, x) {
+    try {
+      const idToken = LiffKit.token();
+      if (!LiffKit.meta.perf || !idToken) return;
+      const c = navigator.connection || {};
+      const ua = navigator.userAgent || '';
+      const body = Object.assign({ action: 'perf', idToken: idToken, v: APP_VER, item: item, net: c.effectiveType || '',
+        dev: /iPhone|iPad|iPod/.test(ua) ? 'iOS' : /Android/.test(ua) ? 'Android' : '其他' }, x || {});
+      setTimeout(function () {
+        fetch(CFG.GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), keepalive: true }).catch(function () {});
+      }, 1200);
+    } catch (e) { /* 回報失敗不影響功能 */ }
+  }
+  const PERF_ACT_MS = 2500;
+  const api = async (action, data) => {
+    const t0 = performance.now();
+    const r = await LiffKit.call(CFG.GAS_URL, action, data);
+    const ms = Math.round(performance.now() - t0);
+    if (action !== 'init' && ms >= PERF_ACT_MS) perfSend('act:' + action, { back: ms, srv: LiffKit.meta.ms });
+    return r;
+  };
 
   /* ---------- 啟動 ---------- */
 
@@ -61,11 +86,22 @@
         showWho();
         const canShow = state.page === 'profile' || (state.page === 'shifts' && state.shifts) ||
           ((state.page === 'checkin' || state.page === 'report') && state.roster);
-        if (canShow) route();
+        if (canShow) { route(); PERF.first = '上次畫面'; pmark('paint'); }
       }
 
-      await LiffKit.init(CFG.LIFF_ID); // v2.3：上次的畫面已先顯示，這裡才等 LINE 登入
+      // v2.3：上次的畫面已先顯示，這裡才等 LINE 登入
+      // v3.14：上次的身分憑證還有效 → 不等 LINE 登入就先送 init（LINE 登入在背景做，完成後換上新的憑證）
+      const tok = LiffKit.earlyToken();
+      PERF.tok = tok ? 1 : 0;
+      PERF.hop = new URLSearchParams(location.search).has('liff.state') ? 1 : 0;
+      const liffP = LiffKit.init(CFG.LIFF_ID, { onSwitch: function () { try { localStorage.removeItem(SNAP_KEY); } catch (e) { /* 略過 */ } } });
+      liffP.then(function () { pmark('liff'); }, function () {});
+      if (!tok) await liffP;
+      else liffP.catch(function () { toast('LINE 連線異常，如果按鈕沒反應請關閉後重開', 'error'); });
+      pmark('send');
       const init = await api('init', { page: state.page, shiftId: state.shiftId });
+      pmark('init');
+      PERF.srv.init = LiffKit.meta.ms;
       state.me = init.me;
       state.shifts = init.shifts || null;
       if (init.shiftId) state.shiftId = init.shiftId;
@@ -76,6 +112,10 @@
       saveSnap();
       showWho();
       route();
+      // v3.14：開啟計時
+      pmark('done');
+      if (!PERF.first) { PERF.first = '等待'; PERF.t.paint = PERF.t.done; }
+      perfSend('open:' + state.page, { first: PERF.first, tok: PERF.tok, hop: PERF.hop, t: PERF.t, srv: PERF.srv });
       flushScores();
       document.addEventListener('visibilitychange', onVisible);
     } catch (e) {
