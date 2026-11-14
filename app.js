@@ -364,7 +364,7 @@
           <div>現場預計 <b>${c.expect}</b> 人${c.hostSeat ? '＋你' : ''}</div>` : ''}
         </div>
         ${c.hostSeat ? '<div class="muted">系統名額已扣掉你的 1 個位子</div>' : ''}
-        ${c.form ? `<div class="hc-form ${c.form.short ? 'short' : ''}">成團檢查 ${esc(c.form.at)}：${c.form.need} 人成團${c.lowCap ? '（名額已調低，門檻跟著調整）' : ''}・${c.form.short ? '目前還差 ' + c.form.short + ' 人' : '人數已夠'}${c.form.keepAll && c.reg < c.form.keepAll ? '（' + c.form.keepAll + ' 人才會保留全部面數，不夠會併面）' : ''}</div>` : ''}
+        ${c.form ? `<div class="hc-form ${c.form.short ? 'short' : ''}">成團檢查 ${esc(c.form.at)}：${c.form.need} 人成團${c.lowCap ? '（名額已調低，門檻跟著調整）' : ''}・${c.form.short ? '目前還差 ' + c.form.short + ' 人' : '人數已夠'}${c.outside && c.outside.heads ? '（含名單外 ' + c.outside.heads + ' 人）' : ''}${c.form.keepAll && c.expect < c.form.keepAll ? '（' + c.form.keepAll + ' 人才會保留全部面數，不夠會併面）' : ''}</div>` : ''}
         <div class="hc-btns">${future ? `<button class="btn" data-go="checkin" data-shift="${esc(s.shiftId)}">看報名名單</button>` : ''}${o.on ? '<button class="btn ghost" data-outside="1">＋名單外報名</button>' : ''}</div>
       </div>`;
   }
