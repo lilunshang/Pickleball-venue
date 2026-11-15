@@ -36,7 +36,7 @@
 
   // v3.14：開啟計時 — 手機端各段花多久（從網頁開始載入算起，毫秒），開完頁後在背景回報一次（不擋畫面）
   //   伺服器回傳 perf＝1 才回報（指令碼屬性 PERF_LOG＝off 可關閉）；超過 2.5 秒的其他請求也回報來回時間
-  const APP_VER = '3.14';
+  const APP_VER = '3.15';
   const PERF = { t: {}, srv: {}, first: '', tok: 0, hop: 0 };
   function pmark(k) { try { if (!(k in PERF.t)) PERF.t[k] = Math.round(performance.now()); } catch (e) { /* 計時失敗不影響功能 */ } }
   function perfSend(item, x) {
@@ -404,7 +404,7 @@
           <div>現場預計 <b>${c.expect}</b> 人${c.hostSeat ? '＋你' : ''}</div>` : ''}
         </div>
         ${c.hostSeat ? '<div class="muted">系統名額已扣掉你的 1 個位子</div>' : ''}
-        ${c.form ? `<div class="hc-form ${c.form.short ? 'short' : ''}">成團檢查 ${esc(c.form.at)}：${c.form.need} 人成團${c.lowCap ? '（名額已調低，門檻跟著調整）' : ''}・${c.form.short ? '目前還差 ' + c.form.short + ' 人' : '人數已夠'}${c.outside && c.outside.heads ? '（含名單外 ' + c.outside.heads + ' 人）' : ''}${c.form.keepAll && c.expect < c.form.keepAll ? '（' + c.form.keepAll + ' 人才會保留全部面數，不夠會併面）' : ''}</div>` : ''}
+        ${c.form ? `<div class="hc-form ${c.form.short ? 'short' : ''}">成團檢查 ${esc(c.form.at)}：${c.form.need} 位球友成團${c.form.withHost ? '（加你共 ' + c.form.withHost + ' 人）' : ''}${c.lowCap ? '（名額已調低，門檻跟著調整）' : ''}・${c.form.short ? '目前還差 ' + c.form.short + ' 人' : '人數已夠'}${c.outside && c.outside.heads ? '（含名單外 ' + c.outside.heads + ' 人）' : ''}${c.form.keepAll && c.expect < c.form.keepAll ? '（' + c.form.keepAll + ' 位球友才會保留全部面數，不夠會併面）' : ''}</div>` : ''}
         <div class="hc-btns">${future ? `<button class="btn" data-go="checkin" data-shift="${esc(s.shiftId)}">看報名名單</button>` : ''}${o.on ? '<button class="btn ghost" data-outside="1">＋名單外報名</button>' : ''}</div>
       </div>`;
   }
