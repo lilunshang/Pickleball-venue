@@ -36,7 +36,7 @@
 
   // v3.14：開啟計時 — 手機端各段花多久（從網頁開始載入算起，毫秒），開完頁後在背景回報一次（不擋畫面）
   //   伺服器回傳 perf＝1 才回報（指令碼屬性 PERF_LOG＝off 可關閉）；超過 2.5 秒的其他請求也回報來回時間
-  const APP_VER = '3.15';
+  const APP_VER = '3.16';
   const PERF = { t: {}, srv: {}, first: '', tok: 0, hop: 0 };
   function pmark(k) { try { if (!(k in PERF.t)) PERF.t[k] = Math.round(performance.now()); } catch (e) { /* 計時失敗不影響功能 */ } }
   function perfSend(item, x) {
@@ -567,7 +567,7 @@
           <div><b>${money(sum.systemTotal)}</b><span>我收的款</span></div>
         </div>
         ${s.charter ? `<div class="chbar">🔒 包場 <b>${esc(s.charter.courts)}</b>・${s.charter.people || '—'} 人${s.charter.contact ? '　聯絡人 ' + esc(s.charter.contact) + (s.charter.phone ? ' <a href="tel:' + esc(s.charter.phone) + '">' + esc(s.charter.phone) + '</a>' : '') : ''}<div class="muted">名單只有聯絡人，不用逐一點名；場主費照包場人數算。</div></div>` : ''}
-        ${s.racket && s.racket.on ? `<div class="rkbar">🏓 本場需要球拍 <b>${sum.rackets || 0}</b> 支${s.racket.left === null ? '' : '　還可租 ' + s.racket.left + ' 支'}${s.racket.used > (sum.rackets || 0) ? '<span class="muted">（同時段其他場另借 ' + (s.racket.used - (sum.rackets || 0)) + ' 支）</span>' : ''}</div>` : ''}
+        ${s.racket && s.racket.on ? `<div class="rkbar">🏓 本場需要球拍 <b>${sum.rackets || 0}</b> 支${s.racket.left === null ? '' : '　還可租 ' + s.racket.left + ' 支'}${s.racket.used > (sum.rackets || 0) ? '<span class="muted">（同時段其他場' + (s.racket.classUsed ? '、課程' : '') + '另借 ' + (s.racket.used - (sum.rackets || 0)) + ' 支）</span>' : ''}</div>` : ''}
         ${arrived
           ? `<div class="arrived">✓ ${esc(r.shift.arrive)}　${esc(r.shift.arriveTime)}</div>`
           : s.editable ? '<button class="btn block" id="btnArrive">我已到場</button><p class="muted" style="text-align:center;margin:6px 0 0">開始前 30 分鐘起、在場地附近才能簽到</p>' : ''}
