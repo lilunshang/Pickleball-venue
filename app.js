@@ -36,7 +36,7 @@
 
   // v3.14：開啟計時 — 手機端各段花多久（從網頁開始載入算起，毫秒），開完頁後在背景回報一次（不擋畫面）
   //   伺服器回傳 perf＝1 才回報（指令碼屬性 PERF_LOG＝off 可關閉）；超過 2.5 秒的其他請求也回報來回時間
-  const APP_VER = '3.16';
+  const APP_VER = '3.17';
   const PERF = { t: {}, srv: {}, first: '', tok: 0, hop: 0 };
   function pmark(k) { try { if (!(k in PERF.t)) PERF.t[k] = Math.round(performance.now()); } catch (e) { /* 計時失敗不影響功能 */ } }
   function perfSend(item, x) {
