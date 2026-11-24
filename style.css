@@ -300,3 +300,7 @@ body.stale #app .btn, body.stale #app [data-act] { opacity: .55; pointer-events:
 .hc-adj { font-size: 13px; background: #eef3fb; color: #1f3f73; border-radius: 8px; padding: 8px 10px; }
 .hc-btns { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; }
 .hc-btns:empty { display: none; }
+
+/* v3.21：原場主看代班場次 */
+.shift.cover { border-left: 4px solid var(--orange); }
+.coverbar { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--orange-soft); color: var(--text, inherit); font-size: 14px; line-height: 1.5; }

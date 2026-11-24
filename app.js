@@ -36,7 +36,7 @@
 
   // v3.14：開啟計時 — 手機端各段花多久（從網頁開始載入算起，毫秒），開完頁後在背景回報一次（不擋畫面）
   //   伺服器回傳 perf＝1 才回報（指令碼屬性 PERF_LOG＝off 可關閉）；超過 2.5 秒的其他請求也回報來回時間
-  const APP_VER = '3.20';
+  const APP_VER = '3.21';
   const PERF = { t: {}, srv: {}, first: '', tok: 0, hop: 0 };
   function pmark(k) { try { if (!(k in PERF.t)) PERF.t[k] = Math.round(performance.now()); } catch (e) { /* 計時失敗不影響功能 */ } }
   function perfSend(item, x) {
@@ -222,7 +222,7 @@
     if (!b) return;
     // v3.11：從排班頁點進未來場次的名單後，再按「現場／回報」分頁要回到今天的場次
     const cur = state.shiftId && [].concat(state.shifts || [], ...Object.values(state.monthShifts)).find((x) => x.shiftId === state.shiftId);
-    if (cur && !cur.editable && cur.date > todayStr()) state.shiftId = '';
+    if (cur && !cur.editable && (cur.date > todayStr() || cur.cover)) state.shiftId = ''; // v3.21：代班場次也是
     go(b.dataset.page);
   });
 
@@ -357,7 +357,7 @@
 
   function shiftNode(s) {
     const div = document.createElement('div');
-    div.className = 'card shift' + (s.isToday ? ' today' : '') + (s.sessionStatus === '取消' ? ' cancelled' : '');
+    div.className = 'card shift' + (s.isToday ? ' today' : '') + (s.sessionStatus === '取消' ? ' cancelled' : '') + (s.cover ? ' cover' : '');
     div.innerHTML = `
         <div class="row">
           <div>
@@ -365,8 +365,9 @@
             <div class="title">${esc(s.venue)}</div>
             <div class="muted">${esc(s.sessionName)}${s.sessionStatus === '取消' ? '（已取消）' : ''}</div>
           </div>
-          <span class="tag">${esc(s.arrive)}</span>
+          <span class="tag${s.cover ? ' orange' : ''}">${esc(s.arrive)}</span>
         </div>
+        ${s.cover ? `<div class="coverbar">你這天請假，由 <b>${esc(s.cover.by || '代班場主')}</b> 代班。<br>你可以看報名名單、＋名單外報名；點名、收款、收班回報由代班場主負責。</div>` : ''}
         ${s.editable && s.sessionStatus !== '取消' ? `
         <div class="actions">
           <button class="btn" data-go="checkin" data-shift="${esc(s.shiftId)}">今日球敘</button>
@@ -387,7 +388,7 @@
     const c = s.count;
     if (!c) return '';
     const pct = c.cap ? Math.min(100, Math.round(c.reg / c.cap * 100)) : 0;
-    const future = !s.editable && s.date > todayStr();
+    const future = !s.editable && (s.date > todayStr() || (s.cover && s.date === todayStr())); // v3.21：代班場次當天也能看名單
     const o = c.outside || {};
     const tags = (c.formed ? '<span class="tag green">已成團</span>' : '')
       + (c.full ? '<span class="tag orange">已額滿</span>' : c.formed ? '' : `<span class="tag orange">報名中${c.form ? '・還沒成團' : ''}</span>`);
@@ -401,10 +402,10 @@
           <div>已付款 <b>${c.paid}</b>・待付 <b>${c.unpaid}</b></div>
           <div>租拍 <b>${c.rackets}</b> 支・候補 <b>${c.wait}</b></div>
           ${o.on ? `<div>名單外 <b>${o.heads}</b> 人${o.text ? '（' + esc(o.text) + '）' : ''}</div>
-          <div>現場預計 <b>${c.expect}</b> 人${c.hostSeat ? '＋你' : ''}</div>` : ''}
+          <div>現場預計 <b>${c.expect}</b> 人${c.hostSeat ? (s.cover ? '＋場主' : '＋你') : ''}</div>` : ''}
         </div>
-        ${c.hostSeat ? '<div class="muted">系統名額已扣掉你的 1 個位子</div>' : ''}
-        ${c.form ? `<div class="hc-form ${c.form.short ? 'short' : ''}">成團檢查 ${esc(c.form.at)}：${c.form.need} 位球友成團${c.form.withHost ? '（加你共 ' + c.form.withHost + ' 人）' : ''}${c.lowCap ? '（名額已調低，門檻跟著調整）' : ''}・${c.form.short ? '目前還差 ' + c.form.short + ' 人' : '人數已夠'}${c.outside && c.outside.heads ? '（含名單外 ' + c.outside.heads + ' 人）' : ''}${c.form.keepAll && c.expect < c.form.keepAll ? '（' + c.form.keepAll + ' 位球友才會保留全部面數，不夠會併面）' : ''}</div>` : ''}
+        ${c.hostSeat ? '<div class="muted">系統名額已扣掉' + (s.cover ? '代班場主' : '你') + '的 1 個位子</div>' : ''}
+        ${c.form ? `<div class="hc-form ${c.form.short ? 'short' : ''}">成團檢查 ${esc(c.form.at)}：${c.form.need} 位球友成團${c.form.withHost ? '（加' + (s.cover ? '場主' : '你') + '共 ' + c.form.withHost + ' 人）' : ''}${c.lowCap ? '（名額已調低，門檻跟著調整）' : ''}・${c.form.short ? '目前還差 ' + c.form.short + ' 人' : '人數已夠'}${c.outside && c.outside.heads ? '（含名單外 ' + c.outside.heads + ' 人）' : ''}${c.form.keepAll && c.expect < c.form.keepAll ? '（' + c.form.keepAll + ' 位球友才會保留全部面數，不夠會併面）' : ''}</div>` : ''}
         <div class="hc-btns">${future ? `<button class="btn" data-go="checkin" data-shift="${esc(s.shiftId)}">看報名名單</button>` : ''}${o.on ? '<button class="btn ghost" data-outside="1">＋名單外報名</button>' : ''}</div>
       </div>`;
   }
@@ -437,7 +438,8 @@
         <label>來源<select id="oSource">${o.sources.map((x) => `<option>${esc(x)}</option>`).join('')}</select></label>
         <label>人數<input id="oN" type="number" inputmode="numeric" min="1" max="40" value="1"></label>
         <p>應收 <b id="oDue">${money(unit)}</b>（自動算）</p>
-        <label>實收金額（還沒收可以先空著，當天在收班回報補）<input id="oGot" type="number" inputmode="numeric" min="0" placeholder="NT$"></label>
+        ${s.cover ? '<p class="muted">你這天請假：先登記人數就好，實收由代班場主當天在收班回報補。</p>' : ''}
+        <label${s.cover ? ' style="display:none"' : ''}>實收金額（還沒收可以先空著，當天在收班回報補）<input id="oGot" type="number" inputmode="numeric" min="0" placeholder="NT$"></label>
         <label id="oMethodWrap" hidden>收款方式<select id="oMethod">${o.methods.map((m) => `<option>${esc(m)}</option>`).join('')}</select></label>
         <label>備註（選填）<input id="oNote" maxlength="150" placeholder="例：小美揪的朋友"></label>
         <div class="actions">
@@ -571,7 +573,7 @@
         ${arrived
           ? `<div class="arrived">✓ ${esc(r.shift.arrive)}　${esc(r.shift.arriveTime)}</div>`
           : s.editable ? '<button class="btn block" id="btnArrive">我已到場</button><p class="muted" style="text-align:center;margin:6px 0 0">開始前 30 分鐘起、在場地附近才能簽到</p>' : ''}
-        ${!s.editable ? (s.date > todayStr() && s.status !== '取消'
+        ${s.cover ? '<div class="coverbar">你這天請假，由 <b>' + esc(s.cover.by || '代班場主') + '</b> 代班：這裡只能看名單；要加名單外報名請回「排班」頁。</div>' : !s.editable ? (s.date > todayStr() && s.status !== '取消'
           ? '<div class="futurebar">還沒到球敘日，只能看名單。點名、收款、現場報名在 ' + esc(s.date.slice(5).replace('-', '/')) + ' 當天操作。</div>'
           : '<p class="muted">此場次目前不可修改（只能在球敘當天或隔天操作）。</p>') : ''}
         ${pendingN ? `<div class="offline">⚠ ${pendingN} 筆比分待上傳，恢復連線後會自動送出</div>` : ''}
