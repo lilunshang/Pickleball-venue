@@ -36,7 +36,7 @@
 
   // v3.14：開啟計時 — 手機端各段花多久（從網頁開始載入算起，毫秒），開完頁後在背景回報一次（不擋畫面）
   //   伺服器回傳 perf＝1 才回報（指令碼屬性 PERF_LOG＝off 可關閉）；超過 2.5 秒的其他請求也回報來回時間
-  const APP_VER = '3.21';
+  const APP_VER = '3.22';
   const PERF = { t: {}, srv: {}, first: '', tok: 0, hop: 0 };
   function pmark(k) { try { if (!(k in PERF.t)) PERF.t[k] = Math.round(performance.now()); } catch (e) { /* 計時失敗不影響功能 */ } }
   function perfSend(item, x) {
@@ -367,7 +367,7 @@
           </div>
           <span class="tag${s.cover ? ' orange' : ''}">${esc(s.arrive)}</span>
         </div>
-        ${s.cover ? `<div class="coverbar">你這天請假，由 <b>${esc(s.cover.by || '代班場主')}</b> 代班。<br>你可以看報名名單、＋名單外報名；點名、收款、收班回報由代班場主負責。</div>` : ''}
+        ${s.cover ? `<div class="coverbar">${s.cover.none ? '你這天請假，這場<b>還沒安排代班</b>（行政客服處理中）。' : '你這天請假，由 <b>' + esc(s.cover.by) + '</b> 代班。'}<br>你可以看報名名單、＋名單外報名；點名、收款、收班回報由代班場主負責。</div>` : ''}
         ${s.editable && s.sessionStatus !== '取消' ? `
         <div class="actions">
           <button class="btn" data-go="checkin" data-shift="${esc(s.shiftId)}">今日球敘</button>
@@ -573,7 +573,7 @@
         ${arrived
           ? `<div class="arrived">✓ ${esc(r.shift.arrive)}　${esc(r.shift.arriveTime)}</div>`
           : s.editable ? '<button class="btn block" id="btnArrive">我已到場</button><p class="muted" style="text-align:center;margin:6px 0 0">開始前 30 分鐘起、在場地附近才能簽到</p>' : ''}
-        ${s.cover ? '<div class="coverbar">你這天請假，由 <b>' + esc(s.cover.by || '代班場主') + '</b> 代班：這裡只能看名單；要加名單外報名請回「排班」頁。</div>' : !s.editable ? (s.date > todayStr() && s.status !== '取消'
+        ${s.cover ? '<div class="coverbar">你這天請假，' + (s.cover.by ? '由 <b>' + esc(s.cover.by) + '</b> 代班' : '這場還沒安排代班') + '：這裡只能看名單；要加名單外報名請回「排班」頁。</div>' : !s.editable ? (s.date > todayStr() && s.status !== '取消'
           ? '<div class="futurebar">還沒到球敘日，只能看名單。點名、收款、現場報名在 ' + esc(s.date.slice(5).replace('-', '/')) + ' 當天操作。</div>'
           : '<p class="muted">此場次目前不可修改（只能在球敘當天或隔天操作）。</p>') : ''}
         ${pendingN ? `<div class="offline">⚠ ${pendingN} 筆比分待上傳，恢復連線後會自動送出</div>` : ''}
