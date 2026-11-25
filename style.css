@@ -304,3 +304,12 @@ body.stale #app .btn, body.stale #app [data-act] { opacity: .55; pointer-events:
 /* v3.21：原場主看代班場次 */
 .shift.cover { border-left: 4px solid var(--orange); }
 .coverbar { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--orange-soft); color: var(--text, inherit); font-size: 14px; line-height: 1.5; }
+
+/* v3.23 每天的應交（可展開） */
+.due-days { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.due-day { border: 1px solid var(--line, #dde3de); border-radius: 10px; overflow: hidden; }
+.due-head { width: 100%; min-height: 46px; padding: 10px 12px; border: 0; background: var(--brand-soft); display: flex; justify-content: space-between; align-items: center; gap: 8px; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.due-items { border-top: 1px solid var(--line, #dde3de); }
+.due-item { padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; }
+.due-item + .due-item { border-top: 1px dashed var(--line, #dde3de); }
+.due-item .small, .muted.small { font-size: 12px; }

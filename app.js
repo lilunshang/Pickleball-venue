@@ -1,5 +1,5 @@
 ﻿/**
- * venue/app.js — 場主 LIFF 頁面　v3.9（2026/11/12：應交／交付 — 收班回報改成確認手上的錢與應交相符，我的資料加「應交與交付」（當月收的錢全部繳回公司並記錄，場主費另外照付、不互抵，?page=profile&sec=due）；收班回報加「還沒收款」清單、名單外收入（匹客城／IG／其他：人數→應收、填實收）、臨時租拍；應交＝現金＋匹客城）；v3.7（2026/11/10：我的資料加「可排時間」— 可以安排的據點、每週時段、不可排日期，和教練 OA 共用；?page=profile&sec=avail 直接打開）；v3.5（2026/11/8：我的資料加「匯款帳戶」，可自己登錄／修改；?page=profile&sec=bank 直接打開）；v3.1（2026/11/1：我的排班改成整個月的月曆，可依地區、據點篩選；cal.js）；v2.5（2026/10/21：顯示付款人、同一付款人一起收款）；v2.4（比分在逾時／系統忙碌時保留重送）
+ * venue/app.js — 場主 LIFF 頁面　v3.23（2026/11/25：應交與交付的每天應交可以展開，看每一場的活動、地點、時段、錢的組成；預設只展開最近一天）；v3.9（2026/11/12：應交／交付 — 收班回報改成確認手上的錢與應交相符，我的資料加「應交與交付」（當月收的錢全部繳回公司並記錄，場主費另外照付、不互抵，?page=profile&sec=due）；收班回報加「還沒收款」清單、名單外收入（匹客城／IG／其他：人數→應收、填實收）、臨時租拍；應交＝現金＋匹客城）；v3.7（2026/11/10：我的資料加「可排時間」— 可以安排的據點、每週時段、不可排日期，和教練 OA 共用；?page=profile&sec=avail 直接打開）；v3.5（2026/11/8：我的資料加「匯款帳戶」，可自己登錄／修改；?page=profile&sec=bank 直接打開）；v3.1（2026/11/1：我的排班改成整個月的月曆，可依地區、據點篩選；cal.js）；v2.5（2026/10/21：顯示付款人、同一付款人一起收款）；v2.4（比分在逾時／系統忙碌時保留重送）
  * v2.3（2026/10/19：開頁更快；含 v2.2 讀取優化、v2.1 我已到場定位）
  * v2.3：LINE 登入（liff.init）完成前就先顯示上次的畫面；切回 LINE 時立刻更新；排班頁預先載入今天的名單
  * v2.2：開頁一次 init、先顯示上次的資料再更新、30 秒輪詢只比對簽章、比分與簽到先更新畫面
@@ -36,7 +36,7 @@
 
   // v3.14：開啟計時 — 手機端各段花多久（從網頁開始載入算起，毫秒），開完頁後在背景回報一次（不擋畫面）
   //   伺服器回傳 perf＝1 才回報（指令碼屬性 PERF_LOG＝off 可關閉）；超過 2.5 秒的其他請求也回報來回時間
-  const APP_VER = '3.22';
+  const APP_VER = '3.23';
   const PERF = { t: {}, srv: {}, first: '', tok: 0, hop: 0 };
   function pmark(k) { try { if (!(k in PERF.t)) PERF.t[k] = Math.round(performance.now()); } catch (e) { /* 計時失敗不影響功能 */ } }
   function perfSend(item, x) {
@@ -1506,6 +1506,7 @@
   }
 
   /* ---------- v3.9 應交與交付（打開才讀） ---------- */
+  const dueOpen = { ym: '', set: new Set() }; // v3.23：每天的應交 展開了哪幾天
   async function openDue(ym) {
     const box = document.getElementById('dueBox');
     if (!box) return;
@@ -1523,7 +1524,24 @@
     if (!box) return;
     const mlabel = (ym) => Number(ym.slice(5)) + ' 月';
     const chips = '<div class="chips">' + [d.cur, d.prev].map((ym) => `<button type="button" class="${ym === d.ym ? 'on' : ''}" data-dym="${ym}">${mlabel(ym)}</button>`).join('') + '</div>';
-    const days = d.days.length ? d.days.map((x) => `<div class="row" style="margin:4px 0"><span>${esc(x.date.slice(5).replace('-', '/'))}</span><span class="muted">${x.cash ? '現金 ' + money(x.cash) : ''}${x.cash && x.pickle ? '・' : ''}${x.pickle ? '匹客城 ' + money(x.pickle) : ''}</span></div>`).join('') : '<p class="muted">這個月還沒有現金或匹客城的收款。</p>';
+    // v3.23：每天一行，點開看每一場（活動、地點、時段、錢的組成）；預設只展開最近一天
+    if (dueOpen.ym !== d.ym) { dueOpen.ym = d.ym; dueOpen.set = new Set(d.days.length ? [d.days[d.days.length - 1].date] : []); }
+    const how = (x) => [x.cash ? '現金 ' + money(x.cash) : '', x.pickle ? '匹客城 ' + money(x.pickle) : ''].filter(Boolean).join('・');
+    const allOpen = d.days.length > 0 && d.days.every((x) => dueOpen.set.has(x.date));
+    const days = d.days.length ? '<div class="due-days">' + d.days.map((x) => {
+      const open = dueOpen.set.has(x.date);
+      const items = x.items || [];
+      const body = open ? '<div class="due-items">' + (items.length ? items.map((it) => `<div class="due-item">
+          <div class="row"><b>${esc(it.name)}</b><span>${money(it.total)}</span></div>
+          ${it.venue || it.courts || it.start ? `<div class="muted">${esc([it.venue, it.courts ? it.courts : '', it.start ? it.start + (it.end ? '–' + it.end : '') : ''].filter(Boolean).join('・'))}${it.status === '取消' ? ' <span class="tag orange">已取消</span>' : ''}</div>` : ''}
+          <div class="muted small">${esc(how(it))}${it.parts ? '（' + esc(it.parts) + '）' : ''}</div>
+        </div>`).join('') : `<div class="due-item muted">${esc(how(x))}</div>`) + '</div>' : '';
+      return `<div class="due-day"><button type="button" class="due-head" data-dday="${esc(x.date)}" aria-expanded="${open}">
+          <span><b>${esc(dayText(x.date))}</b> <span class="muted">・${items.length || 1} 場</span></span>
+          <span><b>${money(x.total != null ? x.total : x.cash + x.pickle)}</b> <span class="muted">${open ? '▲' : '▼'}</span></span>
+        </button>${body}</div>`;
+    }).join('') + '</div>' : '<p class="muted">這個月還沒有現金或匹客城的收款。</p>';
+    const allBtn = d.days.length > 1 ? `<button class="btn sm ghost" type="button" id="dueAll">${allOpen ? '全部收合' : '全部展開'}</button>` : '';
     const hands = d.hands.map((h) => `<div class="row" style="margin:6px 0"><span>${esc(h.date.slice(5).replace('-', '/'))}　${money(h.amount)}<br><span class="muted">${esc(h.method)}${h.last5 ? '・末五碼 ' + esc(h.last5) : ''}${h.note ? '・' + esc(h.note) : ''}</span></span>` +
       `<span>${h.status === '已確認' ? '<span class="tag green">已確認</span>' : h.status === '有誤' ? '<span class="tag orange">有誤</span>' : '<span class="tag">待確認</span> <button class="btn sm ghost" type="button" data-ddel="' + esc(h.id) + '">刪除</button>'}</span></div>`).join('');
     box.innerHTML = chips + `
@@ -1532,7 +1550,7 @@
         <div>已交付 <b>${money(d.handed)}</b></div>
         <div>還沒繳回 <b>${money(d.left)}</b>${d.left > 0 ? ' <span class="muted">→ 請在月底前繳回公司</span>' : ''}</div>
       </div>
-      <h2 style="margin-top:12px">每天的應交</h2>${days}
+      <div class="row" style="margin-top:12px"><h2 style="margin:0">每天的應交</h2>${allBtn}</div>${days}
       <h2 style="margin-top:12px">繳回紀錄</h2>${hands || '<p class="muted">還沒有繳回紀錄。</p>'}
       ${d.on ? (adding ? `
       <form id="fDue" class="form">
@@ -1545,6 +1563,13 @@
         <div class="actions"><button class="btn ghost" type="button" id="dueCancel">取消</button><button class="btn" type="submit">記錄繳回</button></div>
       </form>` : '<button class="btn block" type="button" id="dueAdd">＋記錄繳回</button>') : ''}`;
     box.querySelectorAll('[data-dym]').forEach((b) => b.addEventListener('click', () => openDue(b.dataset.dym)));
+    box.querySelectorAll('[data-dday]').forEach((b) => b.addEventListener('click', () => {
+      const k = b.dataset.dday;
+      if (dueOpen.set.has(k)) dueOpen.set.delete(k); else dueOpen.set.add(k);
+      drawDue(d, adding);
+    }));
+    const allB = document.getElementById('dueAll');
+    if (allB) allB.addEventListener('click', () => { dueOpen.set = allOpen ? new Set() : new Set(d.days.map((x) => x.date)); drawDue(d, adding); });
     box.querySelectorAll('[data-ddel]').forEach((b) => b.addEventListener('click', async () => {
       if (!confirm('刪除這筆交付紀錄？')) return;
       const r = await act(() => api('dueDelete', { id: b.dataset.ddel }));
